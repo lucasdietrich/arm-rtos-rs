@@ -8,7 +8,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _to_implement() {
+pub unsafe extern "C" fn _default_handler() {
     loop {}
 }
 
@@ -37,7 +37,7 @@ static VECTOR_TABLE: [unsafe extern "C" fn(); 16] = [
     // Reset Handler
     _reset_handler,
     // NMI Handler
-    _to_implement,
+    _default_handler,
     // Hard Fault Handler
     _fault_handler,
     // MPU Fault Handler
@@ -55,15 +55,15 @@ static VECTOR_TABLE: [unsafe extern "C" fn(); 16] = [
     // Reserved
     _unimplemented,
     // SVCall Handler
-    _to_implement,
+    _default_handler,
     // Debug Monitor Handler
-    _to_implement,
+    _default_handler,
     // Reserved
     _unimplemented,
     // PendSV Handler
-    _to_implement,
+    _default_handler,
     // SysTick Handler
-    _to_implement,
+    _default_handler,
     // DEVICES INTERRUPTS
 ];
 

@@ -1,5 +1,10 @@
 [target.thumbv7em-none-eabihf]
-rustflags = ["-C", "link-arg=-Tdemo/mps2_an385.x", "-C", "link-args=-Map=./target/demo.map"]
+rustflags = [
+    # order of linker arguments is important
+    "-C", "link-arg=-Tdemo/mps2_an385.x", 
+    "-C", "link-arg=-Tdemo/common.x", 
+    "-C", "link-args=-Map=./target/demo.map"
+]
 
 runner = "./scripts/qemu-runner.sh"
 
