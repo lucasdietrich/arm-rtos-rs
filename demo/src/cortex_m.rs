@@ -1,4 +1,3 @@
-use core::arch::{arm, asm};
 use core::ptr::{self, addr_of, addr_of_mut};
 
 use crate::_start;

@@ -8,6 +8,11 @@ mod mps2_an385;
 
 static RO_MYVAR: u32 = 10;
 static mut DATA_MYVAR: u32 = 10;
+
+/* Explicitly place the var in the .bss section
+ * but this is not necessary, as all 0-initialized
+ * vars are placed in the .bss section by default */
+#[link_section = ".bss"]
 static mut BSS_MYVAR: u32 = 0;
 
 #[no_mangle]
