@@ -1,30 +1,7 @@
 [target.thumbv7em-none-eabihf]
-rustflags = ["-C", "link-arg=-Tdemo/mps2_an385.x"]
+rustflags = ["-C", "link-arg=-Tdemo/mps2_an385.x", "-C", "link-args=-Map=./target/demo.map"]
 
-runner = """
-    qemu-system-arm
-        -cpu cortex-m4
-        -machine mps2-an386
-        -nographic
-        -vga none
-        -semihosting-config enable=on,target=native
-        -kernel
-"""
-        # -s -S
-        # -pidfile qemu.pid
-        # -device loader,file=${target}
-
-        # -rtc clock=vm
-        # -icount shift=10,align=off,sleep=on
-
-        # -chardev stdio,id=myCon
-        # -serial chardev:myCon
-        # -chardev file,id=myFile,mux=on,path=io.txt
-        # -serial chardev:myFile
-        # -serial chardev:myFile
-        # -serial chardev:myFile
-        # -serial chardev:myFile
-
+runner = "./scripts/qemu-runner.sh"
 
 [build]
 target = "thumbv7em-none-eabihf"
