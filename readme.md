@@ -7,9 +7,11 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 ## Ressources
 
 - [The embedonomicon](https://docs.rust-embedded.org/embedonomicon/preface.html)
+- [A Practical guide to ARM Cortex-M Exception Handling](https://interrupt.memfault.com/blog/arm-cortex-m-exceptions-and-nvic)
 
 - [QEMU / System Emulation / Generic Loader](https://www.qemu.org/docs/master/system/generic-loader.html)
 - [crate: cortex_m_rt](https://docs.rs/cortex-m-rt/latest/cortex_m_rt/)
+- [Embedded Systems Security and TrustZone](https://embeddedsecurity.io/)
 
 ## Desired features
 
@@ -21,8 +23,9 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [x] RAM initialization
     - [ ] Vector table
     - [x] Reset handler
-    - [ ] Interrupts
+    - [ ] PendSV
     - [ ] SysTick
+    - [ ] Other interrupts
 - [ ] Peripherals: UART
     - [x] mps2_an385
     - [ ] stm32f4xx
@@ -48,6 +51,99 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 
 TODO:
 
+- arm user vs system modes
+- user / system / irq ? and stacks
+- thread mode vs handler mode
 - Target triplet ? `thumbv7em-none-eabihf`, or maybe `thumbv7m-none-eabi` is enough ?
 - ~~understand why .data MYVAR is already initialized in QEMU~~ -> QEMU loads the .data section from the ELF file to RAM
 - ~~understand why .data .bss appears in the ELF file~~ -> QEMU loads the .bss section from the ELF file to RAM
+- Add the noinit section to the linker script
+
+## Notes
+
+### Static and const
+
+```rs
+const FOO: u32 = 42; // Const is a compile-time constant
+static BAR: u32 = 42; // Static is a runtime constant
+static mut BAZ: u32 = 42; // Static mutable 
+```
+
+### Export symbols
+
+```rs
+#[export_name = "my_symbol"]
+extern "C" fn my_function() {
+    // ...
+}
+
+```
+
+### Links to a section
+    
+```rs
+#[link_section = ".kvars"]
+static mut BAZ: u32 = 42;
+```
+
+### Write ASM in rust code
+
+Following inline assembly code is equivalent to the rust code:
+
+```rs
+use use core::arch::global_asm;
+global_asm!(
+    "
+    .section .text, \"ax\"
+    .global _pendsv
+    .thumb_func
+_pendsv:
+    push {{r7, lr}}
+    mov	r7, sp
+    nop
+    pop	{{r7, pc}}
+    "
+);
+
+extern "C" {
+    pub fn _pendsv();
+}
+```
+
+Pure rust:
+
+```rs
+use use core::arch::asm;
+#[no_mangle]
+pub unsafe extern "C" fn _pendsv() {
+    asm!("nop");
+}
+```
+
+It's currently impossible to write naked functions in Rust, see <https://github.com/rust-lang/rust/issues/90957> for support for `#[naked]` functions.
+
+### Static initialization
+
+A static variable can be initialized using a `const` function:
+
+```rs
+pub struct Kernel;
+
+impl Kernel {
+    pub const fn init() -> Kernel {
+        Kernel {}
+    }
+}
+
+fn main() {
+    static mut KERNEL: Kernel = Kernel::init();
+}
+```
+
+### cortex-debug: Watch variables
+
+If you want to watch a static rust variable, you need to use its full name, for example:
+
+![pics/cortex-debug-watch-rust-static.png](pics/cortex-debug-watch-rust-static.png)
+
+The full names can be found in the output of `nm`: e.g. `2000000c 00000014 d demo::KERNEL`

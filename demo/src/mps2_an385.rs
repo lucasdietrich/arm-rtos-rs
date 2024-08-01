@@ -1,6 +1,6 @@
 use volatile_register::RW;
 
-use crate::device::{SerialConfig, SerialTrait};
+use crate::serial::{SerialConfig, SerialTrait};
 
 /// Universal Asynchronous Receiver Transmitter (UART)
 #[repr(C)]
@@ -43,12 +43,12 @@ impl<const FCPU: u32> UartDevice<FCPU> {
 }
 
 impl<const FCPU: u32> SerialTrait for UartDevice<FCPU> {
-    fn init(&self, config: SerialConfig) {
+    fn init(&self, config: &SerialConfig) {
         unsafe { (*self.uart).bauddiv.write(FCPU / config.baudrate) } // Set baudrate
         unsafe { (*self.uart).ctrl.write(0x03) } // Enable RX and TX
     }
 
-    fn write(&self, c: u8) {
+    fn write_byte(&self, c: u8) {
         while unsafe { (*self.uart).state.read() & 0x1 } != 0 {}
         unsafe { (*self.uart).data.write(c as u32) }
     }
@@ -62,5 +62,14 @@ impl<const FCPU: u32> SerialTrait for UartDevice<FCPU> {
         } else {
             None
         }
+    }
+}
+
+impl<const FCPU: u32> core::fmt::Write for UartDevice<FCPU> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        for b in s.as_bytes() {
+            self.write_byte(*b);
+        }
+        Ok(())
     }
 }

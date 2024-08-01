@@ -9,6 +9,11 @@ mps2-an385 = []
 
 [dependencies]
 volatile-register = "0.2.2"
+bitfield = "0.16.0"
+
+# contains definitions to cortex m registers
+cortex-m = "0.7.7"
+
 # mps2_an385 ={ path = "../mps2_an385" }
 
 # critical-section = "1.0.0"

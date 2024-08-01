@@ -10,9 +10,13 @@
             "servertype": "external",
             "device": "MPS2-AN385",
             "gdbTarget": "127.0.0.1:1234",
-            "runToEntryPoint": "SystemInit",
+            "runToEntryPoint": "_start",
             "svdFile": "res/svd/ARMCM3.svd",
             // "svdFile": "res/svd/CMSDK_CM3.svd",
+            "postLaunchCommands": [
+                // "b _pendsv",
+                "b _thread_switch_pop",
+            ]
         },
     ]
 }

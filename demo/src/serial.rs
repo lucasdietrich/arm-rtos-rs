@@ -9,13 +9,7 @@ impl Default for SerialConfig {
 }
 
 pub trait SerialTrait {
-    fn init(&self, config: SerialConfig);
-    fn write(&self, byte: u8);
+    fn init(&self, config: &SerialConfig);
+    fn write_byte(&self, byte: u8);
     fn read(&self) -> Option<u8>;
-
-    fn write_str(&self, s: &str) {
-        for c in s.bytes() {
-            self.write(c);
-        }
-    }
 }

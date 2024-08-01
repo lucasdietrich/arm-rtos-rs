@@ -1,6 +1,11 @@
-use core::ptr::{self, addr_of, addr_of_mut};
+use core::{
+    arch::{asm, global_asm},
+    intrinsics::{volatile_load, volatile_store},
+    ptr::{self, addr_of, addr_of_mut},
+};
 
-use crate::_start;
+use crate::{_pendsv, _start, KERNEL};
+use core::intrinsics;
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
@@ -20,6 +25,11 @@ pub unsafe extern "C" fn _unimplemented() {
 #[no_mangle]
 pub unsafe extern "C" fn _fault_handler() {
     loop {}
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _svc() {
+    asm!("nop");
 }
 
 extern "C" {
@@ -55,13 +65,13 @@ static VECTOR_TABLE: [unsafe extern "C" fn(); 16] = [
     // Reserved
     _unimplemented,
     // SVCall Handler
-    _default_handler,
+    _svc,
     // Debug Monitor Handler
     _default_handler,
     // Reserved
     _unimplemented,
     // PendSV Handler
-    _default_handler,
+    _pendsv,
     // SysTick Handler
     _default_handler,
     // DEVICES INTERRUPTS
@@ -76,6 +86,11 @@ extern "C" {
     static mut _edata: u8;
     static _sidata: u8;
 }
+
+// This trick prevent to have two instances of the same code
+// from cortex-m crate
+#[export_name = "cortex init duplicate found: __ONCE__"]
+pub static __ONCE__: () = ();
 
 // TODO also mark as "-> !"
 #[no_mangle]
@@ -93,4 +108,42 @@ pub unsafe extern "C" fn _reset_handler() {
 
     // Loop forever if _start returns
     loop {}
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn enable_irq() {
+    asm!("cpsid i");
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn disable_irq() {
+    asm!("cpsie i");
+}
+
+pub fn reg_modify(reg: *mut u32, val: u32, mask: u32) {
+    unsafe {
+        let reg_val = volatile_load(reg);
+        volatile_store(reg, (reg_val & !mask) | val);
+    }
+}
+
+// Triggering PendSV exception causes the state context to be saved on the stack
+//
+// Stack frame: (from top to bottom)
+//  return program status register (xPSR)
+//  return address
+//  LR
+//  R12
+//  R3
+//  R2
+//  R1
+//  R0
+#[no_mangle]
+pub unsafe extern "C" fn pendsv_set() {
+    // This code is equivalent to
+    // unsafe { p.SCB.icsr.modify(|r| r | 1 << 28) }; // SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+
+    let icsr = 0xE000_ED04 as *mut u32;
+    let pendsvset_bit = 1 << 28;
+    reg_modify(icsr, pendsvset_bit, pendsvset_bit);
 }
