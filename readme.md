@@ -12,6 +12,7 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 - [QEMU / System Emulation / Generic Loader](https://www.qemu.org/docs/master/system/generic-loader.html)
 - [crate: cortex_m_rt](https://docs.rs/cortex-m-rt/latest/cortex_m_rt/)
 - [Embedded Systems Security and TrustZone](https://embeddedsecurity.io/)
+- [The Rust Reference: Inline assembly](https://doc.rust-lang.org/reference/inline-assembly.html)
 
 ## Desired features
 
@@ -30,6 +31,10 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [x] mps2_an385
     - [ ] stm32f4xx
 - [ ] RTOS features:
+    - [ ] stacks
+        - [ ] svc stack
+        - [ ] irq stack
+        - [ ] user stack
     - [ ] thread switch (without FPU support)
     - [ ] cooperative scheduling
     - [ ] preemptive scheduling
@@ -47,10 +52,11 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [ ] parse elf file
     - [ ] toolchain for build the application (C/Rust + linker script + relocation? + syscalls)
 
-## Questions/ideas
+## Questions/ideas/problems
 
 TODO:
 
+- use SVC for syscalls
 - arm user vs system modes
 - user / system / irq ? and stacks
 - thread mode vs handler mode
@@ -58,6 +64,7 @@ TODO:
 - ~~understand why .data MYVAR is already initialized in QEMU~~ -> QEMU loads the .data section from the ELF file to RAM
 - ~~understand why .data .bss appears in the ELF file~~ -> QEMU loads the .bss section from the ELF file to RAM
 - Add the noinit section to the linker script
+- If symbol gets wiped out of the elf, gdb won't find it, we need to force the symbol to be kept in the elf file -> how to ? (e.g. _thread_switch)
 
 ## Notes
 
@@ -84,6 +91,31 @@ extern "C" fn my_function() {
 ```rs
 #[link_section = ".kvars"]
 static mut BAZ: u32 = 42;
+```
+
+### Make static variable extern
+
+In order to export the symbol of a static variable, it must be declared with `#[used]`:
+The `no_mangle` attribute make sure the symbol name is not mangled by the compiler (e.g. demo::entry::z_current -> z_current)
+
+```rs
+#[used]
+#[no_mangle]
+pub static mut z_current: *mut Thread = core::ptr::null_mut();
+```
+
+### Rename symbol
+
+!!! warning "TODO"
+    What is bellow is probably wrong
+
+`link_name` must only be used on statics and functions that are in an `extern` block.
+
+```rs
+extern "C" {
+    #[link_name = "z_current"]
+    static mut z_current: *mut Thread;
+}
 ```
 
 ### Write ASM in rust code

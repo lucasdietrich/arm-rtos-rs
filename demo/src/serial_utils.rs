@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::println;
+
 pub enum Hex {
     U8(u8),
     U16(u16),
@@ -14,4 +16,9 @@ impl fmt::Display for Hex {
             Hex::U32(word) => write!(f, "0x{:08x}", word),
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn z_debug(r0: u32) {
+    println!("debug: {}", Hex::U32(r0))
 }

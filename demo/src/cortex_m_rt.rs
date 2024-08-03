@@ -1,11 +1,17 @@
 use core::{
-    arch::{asm, global_asm},
+    arch::asm,
+    ffi::c_void,
     intrinsics::{volatile_load, volatile_store},
     ptr::{self, addr_of, addr_of_mut},
 };
 
-use crate::{_pendsv, _start, KERNEL};
-use core::intrinsics;
+// Deduplicate
+pub const FCPU: u32 = 25_000_000;
+
+use crate::{
+    entry::{_start, _svc},
+    kernel::z_pendsv,
+};
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
@@ -25,11 +31,6 @@ pub unsafe extern "C" fn _unimplemented() {
 #[no_mangle]
 pub unsafe extern "C" fn _fault_handler() {
     loop {}
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn _svc() {
-    asm!("nop");
 }
 
 extern "C" {
@@ -71,7 +72,7 @@ static VECTOR_TABLE: [unsafe extern "C" fn(); 16] = [
     // Reserved
     _unimplemented,
     // PendSV Handler
-    _pendsv,
+    z_pendsv,
     // SysTick Handler
     _default_handler,
     // DEVICES INTERRUPTS
@@ -139,11 +140,90 @@ pub fn reg_modify(reg: *mut u32, val: u32, mask: u32) {
 //  R1
 //  R0
 #[no_mangle]
-pub unsafe extern "C" fn pendsv_set() {
+pub unsafe extern "C" fn trig_pendsv() {
     // This code is equivalent to
     // unsafe { p.SCB.icsr.modify(|r| r | 1 << 28) }; // SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 
-    let icsr = 0xE000_ED04 as *mut u32;
-    let pendsvset_bit = 1 << 28;
-    reg_modify(icsr, pendsvset_bit, pendsvset_bit);
+    const ICSR: *mut u32 = 0xE000_ED04 as *mut u32;
+    const PENDSVSET_BIT: u32 = 1 << 28;
+    reg_modify(ICSR, PENDSVSET_BIT, PENDSVSET_BIT);
+}
+
+#[no_mangle]
+// Read A7.7.175 of DDI0403E_B_armv7m_arm.pdf
+// TODO how to read back svc value 0xbb
+// -> read pc-4
+pub unsafe extern "C" fn trig_svc_alt(
+    r0: *mut c_void,
+    r1: *mut c_void,
+    r2: *mut c_void,
+    r3: *mut c_void,
+) {
+    asm!(
+        "
+        svc #0xbb
+    ",
+    in("r0") r0,
+    in("r1") r1,
+    in("r2") r2,
+    in("r3") r3,
+
+    // Indication:
+    options(nostack, nomem),
+    );
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn trig_svc_default() {
+    trig_svc_alt(
+        0xaaaaaaaa as *mut c_void,
+        0xbbbbbbbb as *mut c_void,
+        0xcccccccc as *mut c_void,
+        0xdddddddd as *mut c_void,
+    )
+}
+
+// Stack frame produced by an exception
+#[repr(C)]
+#[allow(non_camel_case_types)]
+pub struct __basic_sf {
+    pub r0: u32,
+    pub r1: u32,
+    pub r2: u32,
+    pub r3: u32,
+    pub r12: u32,
+    pub lr: u32, // r14 (unset on thread entry)
+    pub pc: u32, // r15 (return address ra in some context)
+    pub xpsr: u32,
+}
+
+impl __basic_sf {
+    // Return the size in the word unit
+    pub const fn size() -> usize {
+        size_of::<Self>() >> 2
+    }
+}
+
+// Representation of the callee saved context in stack
+// WARNING: This structure is not 8B aligned !
+// This might be moved to thread structure to avoid SP aligned issues
+#[repr(C)]
+#[allow(non_camel_case_types)]
+pub struct __callee_context {
+    pub v1: u32,
+    pub v2: u32,
+    pub v3: u32,
+    pub v4: u32,
+    pub v5: u32,
+    pub v6: u32,
+    pub v7: u32,
+    pub v8: u32,
+    pub ip: u32,
+}
+
+impl __callee_context {
+    // Return the size in the word unit
+    pub const fn size() -> usize {
+        size_of::<Self>() >> 2
+    }
 }

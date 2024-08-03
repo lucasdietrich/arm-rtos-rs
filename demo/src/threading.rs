@@ -4,6 +4,12 @@ use core::{
     ptr::{addr_of, null_mut},
 };
 
+use crate::{
+    cortex_m_rt::{__basic_sf, __callee_context},
+    println,
+    serial_utils::Hex,
+};
+
 // This function can be naked as it will never return !
 type ThreadEntry = extern "C" fn(*mut c_void) -> !;
 
@@ -13,12 +19,19 @@ pub struct Stack {
 }
 
 impl Stack {
-    pub fn new(stack: &'static mut [u8]) -> Self {
+    pub fn new(stack: &'static mut [u8]) -> Option<Self> {
         let stack_size = stack.len();
-        Stack {
-            stack_end: unsafe { stack.as_mut_ptr().add(stack_size) } as *mut u32,
-            stack_size,
+        let stack_end = unsafe { stack.as_mut_ptr().add(stack_size) } as *mut u32;
+
+        // SP wouldn't be 8 B align
+        if stack_end as usize % 8 != 0 {
+            return None;
         }
+
+        Some(Stack {
+            stack_end,
+            stack_size,
+        })
     }
 }
 
@@ -39,59 +52,53 @@ impl Thread {
     }
 
     pub fn init(stack: &Stack, entry: ThreadEntry, arg1: *mut c_void) -> Self {
+        #[repr(C)]
+        #[allow(non_camel_case_types)]
+        struct InitStackFrame {
+            pub context: __callee_context, // Thread switch context
+            pub exc: __basic_sf,           // Exception strack frame
+        }
+
+        impl InitStackFrame {
+            pub const fn size() -> usize {
+                size_of::<Self>() >> 2
+            }
+        }
+
         const UNDEFINED_MARKER: u32 = 0xAAAAAAAA;
-        const XPSR: u32 = 0x41000000;
-
-        // Stack must be initilized as follow (top to bottom)
-
-        let init_stack_frame = [
-            // LOW STACK ADDR
-            // thread switch context
-            // r4
-            UNDEFINED_MARKER,
-            // r5
-            UNDEFINED_MARKER,
-            // r6
-            UNDEFINED_MARKER,
-            // r7
-            UNDEFINED_MARKER,
-            // r8
-            UNDEFINED_MARKER,
-            // r9
-            UNDEFINED_MARKER,
-            // r10
-            UNDEFINED_MARKER,
-            // r11
-            UNDEFINED_MARKER,
-            // lr: exception
-            0xFFFFFF9, // TODO
-            // PENDSV context
-            // r0: arg
-            arg1 as u32,
-            // r1: 0
-            UNDEFINED_MARKER,
-            // r2: 0
-            UNDEFINED_MARKER,
-            // r3: 0
-            UNDEFINED_MARKER,
-            // r12: 0
-            UNDEFINED_MARKER,
-            // lr: return address of the task entry function (TODO what value should be set ?)
-            UNDEFINED_MARKER,
-            // return address: task entry function address
-            entry as u32,
-            // END OF THREAD STACK
-            // return program status register (xPSR)
-            XPSR,
-        ];
+        const LR_DEFAULT: u32 = 0xFFFFFFFF;
+        const XPSR: u32 = 0x01000000; // Thumb bit to 1
 
         let thread = Thread {
-            stack_ptr: unsafe { stack.stack_end.sub(init_stack_frame.len()) },
+            stack_ptr: unsafe { stack.stack_end.sub(InitStackFrame::size()) },
+        };
+        let sf = thread.stack_ptr as *mut InitStackFrame;
+
+        // Create exception stack frame
+        unsafe {
+            (*sf).exc.r0 = arg1 as u32;
+            (*sf).exc.r1 = UNDEFINED_MARKER;
+            (*sf).exc.r2 = UNDEFINED_MARKER;
+            (*sf).exc.r3 = UNDEFINED_MARKER;
+            (*sf).exc.r12 = UNDEFINED_MARKER;
+            (*sf).exc.lr = LR_DEFAULT;
+            (*sf).exc.pc = entry as u32; // return address: task entry function address
+            (*sf).exc.xpsr = XPSR;
         };
 
-        for (index, val) in init_stack_frame.into_iter().enumerate() {
-            unsafe { thread.stack_ptr.add(index).write(val) };
-        }
+        // Create dummy context stack frame
+        unsafe {
+            (*sf).context.v1 = 0;
+            (*sf).context.v2 = 0;
+            (*sf).context.v3 = 0;
+            (*sf).context.v4 = 0;
+            (*sf).context.v5 = 0;
+            (*sf).context.v6 = 0;
+            (*sf).context.v7 = 0;
+            (*sf).context.v8 = 0;
+            (*sf).context.ip = 0;
+        };
+        // TODO: Any problem with 8B-unaligned SP ?
 
         thread
     }

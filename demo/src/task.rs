@@ -17,6 +17,6 @@ extern "C" fn task_entry(arg: *mut c_void) -> ! {
 static mut TASK_STACK: [u8; 1024] = [0; 1024];
 
 pub fn start_task() {
-    let stack = Stack::new(unsafe { &mut TASK_STACK });
+    let stack = Stack::new(unsafe { &mut TASK_STACK }).unwrap();
     Thread::init(&stack, task_entry, null_mut());
 }
