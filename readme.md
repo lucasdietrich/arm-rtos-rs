@@ -14,6 +14,12 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 - [Embedded Systems Security and TrustZone](https://embeddedsecurity.io/)
 - [The Rust Reference: Inline assembly](https://doc.rust-lang.org/reference/inline-assembly.html)
 
+### Datasheets:
+
+- [Procedure Call Standard for the ARM® Architecture](https://web.eecs.umich.edu/~prabal/teaching/resources/eecs373/ARM-AAPCS-EABI-v2.08.pdf)
+- [Cortex-M3 Technical Reference Manual](https://documentation-service.arm.com/static/5e8e107f88295d1e18d34714?token=)
+- [Deprecated Features in ARMv7-M](https://documentation-service.arm.com/static/5f8fedcbf86e16515cdbf30f?token=)
+
 ## Desired features
 
 - [ ] Architecture: ARM Cortex-M3 (`thumbv7em-none-eabihf`), devices:
@@ -22,9 +28,9 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 
 - [x] Cortex M3/M4 initialization
     - [x] RAM initialization
-    - [ ] Vector table
+    - [x] Vector table
     - [x] Reset handler
-    - [ ] PendSV
+    - [x] PendSV
     - [ ] SysTick
     - [ ] Other interrupts
 - [ ] Peripherals: UART
@@ -32,11 +38,11 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [ ] stm32f4xx
 - [ ] RTOS features:
     - [ ] stacks
-        - [ ] svc stack
+        - [x] system stack
         - [ ] irq stack
         - [ ] user stack
-    - [ ] thread switch (without FPU support)
-    - [ ] cooperative scheduling
+    - [x] thread switch (without FPU support)
+    - [x] cooperative scheduling
     - [ ] preemptive scheduling
     - [ ] sleep
     - [ ] mutex
