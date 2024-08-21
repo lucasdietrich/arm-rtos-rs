@@ -84,6 +84,7 @@ pub fn _start() {
                     // start user process
                 },
                 b'a' => {
+                    println!("aborting...");
                     intrinsics::abort();
                 }
                 _ => {}

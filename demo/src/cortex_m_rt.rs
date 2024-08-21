@@ -197,13 +197,6 @@ pub struct __basic_sf {
     pub xpsr: u32,
 }
 
-impl __basic_sf {
-    // Return the size in the word unit
-    pub const fn size() -> usize {
-        size_of::<Self>() >> 2
-    }
-}
-
 // Representation of the callee saved context in stack
 // WARNING: This structure is not 8B aligned !
 // This might be moved to thread structure to avoid SP aligned issues
@@ -219,11 +212,4 @@ pub struct __callee_context {
     pub v7: u32,
     pub v8: u32,
     pub ip: u32,
-}
-
-impl __callee_context {
-    // Return the size in the word unit
-    pub const fn size() -> usize {
-        size_of::<Self>() >> 2
-    }
 }

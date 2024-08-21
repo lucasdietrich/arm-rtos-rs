@@ -59,32 +59,14 @@ impl Thread {
             pub exc: __basic_sf,           // Exception strack frame
         }
 
-        impl InitStackFrame {
-            pub const fn size() -> usize {
-                size_of::<Self>() >> 2
-            }
-        }
-
         const UNDEFINED_MARKER: u32 = 0xAAAAAAAA;
         const LR_DEFAULT: u32 = 0xFFFFFFFF;
         const XPSR: u32 = 0x01000000; // Thumb bit to 1
 
         let thread = Thread {
-            stack_ptr: unsafe { stack.stack_end.sub(InitStackFrame::size()) },
+            stack_ptr: unsafe { stack.stack_end.sub(size_of::<InitStackFrame>() >> 2) },
         };
         let sf = thread.stack_ptr as *mut InitStackFrame;
-
-        // Create exception stack frame
-        unsafe {
-            (*sf).exc.r0 = arg1 as u32;
-            (*sf).exc.r1 = UNDEFINED_MARKER;
-            (*sf).exc.r2 = UNDEFINED_MARKER;
-            (*sf).exc.r3 = UNDEFINED_MARKER;
-            (*sf).exc.r12 = UNDEFINED_MARKER;
-            (*sf).exc.lr = LR_DEFAULT;
-            (*sf).exc.pc = entry as u32; // return address: task entry function address
-            (*sf).exc.xpsr = XPSR;
-        };
 
         // Create dummy context stack frame
         unsafe {
@@ -99,6 +81,18 @@ impl Thread {
             (*sf).context.ip = 0;
         };
         // TODO: Any problem with 8B-unaligned SP ?
+
+        // Create exception stack frame
+        unsafe {
+            (*sf).exc.r0 = arg1 as u32;
+            (*sf).exc.r1 = UNDEFINED_MARKER;
+            (*sf).exc.r2 = UNDEFINED_MARKER;
+            (*sf).exc.r3 = UNDEFINED_MARKER;
+            (*sf).exc.r12 = UNDEFINED_MARKER;
+            (*sf).exc.lr = LR_DEFAULT;
+            (*sf).exc.pc = entry as u32; // return address: task entry function address
+            (*sf).exc.xpsr = XPSR;
+        };
 
         thread
     }
