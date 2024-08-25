@@ -31,11 +31,12 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [x] Vector table
     - [x] Reset handler
     - [x] PendSV
-    - [ ] SysTick
+    - [x] Systick
     - [ ] Other interrupts
-- [ ] Peripherals: UART
-    - [x] mps2_an385
-    - [ ] stm32f4xx
+- [ ] Peripherals:
+    - [ ] UART
+      - [x] mps2_an385
+      - [ ] stm32f4xx
 - [ ] RTOS features:
     - [ ] stacks
         - [x] system stack
@@ -48,8 +49,8 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [ ] mutex
     - [ ] semaphore
     - [ ] minimal drivers support for UART and GPIO
-    - [ ] syscalls:
-        - [ ] printf
+    - [x] syscalls:
+        - [x] printf
         - [ ] sleep
         - [ ] fork
         - [ ] mutex

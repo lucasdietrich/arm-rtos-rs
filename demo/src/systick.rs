@@ -22,14 +22,14 @@ impl<const FCPU: u32> SysTickDevice<FCPU> {
         SysTickDevice { device }
     }
 
-    pub fn configure(&mut self, period: u32, interrupt: bool) {
+    pub fn configure<const FST: u32>(&mut self, interrupt: bool) {
         const SOURCE: u32 = 1 << 2;
         const ENABLE: u32 = 1 << 0;
 
         let tickint: u32 = if interrupt { 1 << 1 } else { 0 };
 
         unsafe {
-            (*self.device).load.write(FCPU / period);
+            (*self.device).load.write(FCPU / FST);
             (*self.device).val.write(0);
             (*self.device).ctrl.write(SOURCE | ENABLE | tickint);
         }

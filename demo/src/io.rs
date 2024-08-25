@@ -1,7 +1,6 @@
+use crate::cortex_m_rt::FCPU;
 use crate::{mps2_an385::UartDevice, serial::SerialTrait};
 use core::fmt::{Arguments, Write};
-
-pub const FCPU: u32 = 25_000_000;
 
 static mut STDIO_UART: Option<UartDevice<FCPU>> = None;
 

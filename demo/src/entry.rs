@@ -3,10 +3,11 @@ use core::{ffi::c_void, fmt::Write, intrinsics, ptr::addr_of_mut};
 
 use crate::cortex_m_rt::{enable_irq, k_call_pendsv, FCPU};
 use crate::kernel::{z_current, z_next, Kernel};
-use crate::mps2_an385::{SysTickDevice, UartDevice, SYSTICK, UART0};
+use crate::mps2_an385::{UartDevice, SYSTICK, UART0};
 use crate::println;
 use crate::serial::{SerialConfig, SerialTrait};
 use crate::serial_utils::Hex;
+use crate::systick::SysTickDevice;
 use crate::threading::{Stack, Thread};
 use crate::userspace::{k_svc_debug, k_svc_print, k_svc_sleep};
 use crate::{io, print};
@@ -15,8 +16,10 @@ use cortex_m::{
     Peripherals,
 };
 
+const FST: u32 = 1_000; // Hz
+
 // init kernel
-static mut KERNEL: Kernel<2> = Kernel::init();
+static mut KERNEL: Kernel<2, FST> = Kernel::init();
 
 #[no_mangle]
 pub extern "C" fn z_systick() {
@@ -39,7 +42,7 @@ pub fn _start() {
     #[cfg(feature = "systick")]
     {
         let mut systick = SysTickDevice::<FCPU>::new(SYSTICK);
-        systick.configure(1000, true);
+        systick.configure::<FST>(true);
     }
 
     // Show startup state
@@ -78,6 +81,7 @@ pub fn _start() {
             );
 
             match byte {
+                b'b' => unsafe { KERNEL.busy_wait(1000) },
                 b'p' => unsafe {
                     println!("PendSV !");
                     k_call_pendsv();

@@ -99,17 +99,19 @@ extern "C" {
     pub fn z_pendsv();
 }
 
+// N: Maximum number of threads supported
+// F: systick frequency (Hz)
 #[repr(C)]
-pub struct Kernel<const N: usize = 1> {
+pub struct Kernel<const N: usize = 1, const F: u32 = 1> {
     tasks: [Option<Thread>; N],
     current: usize,
 
-    // Ticks counter
+    // Ticks counter: period: P (ms)
     ticks: u64,
 }
 
-impl<const N: usize> Kernel<N> {
-    pub const fn init() -> Kernel<N> {
+impl<const N: usize, const F: u32> Kernel<N, F> {
+    pub const fn init() -> Kernel<N, F> {
         // Create an uninitialized array of MaybeUninit
         let mut tasks = [const { None }; N];
 
@@ -159,8 +161,13 @@ impl<const N: usize> Kernel<N> {
     }
 
     // TODO Any race condition on the ticks counter ?
-    pub fn get_ticks(&mut self) -> u64 {
+    pub fn get_ticks(&self) -> u64 {
         self.ticks
+    }
+
+    pub fn busy_wait(&self, ms: u32) {
+        let end = self.get_ticks().saturating_add(((ms * F) / 1000) as u64);
+        while self.get_ticks() < end {}
     }
 }
 
