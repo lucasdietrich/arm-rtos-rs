@@ -9,7 +9,7 @@ use core::{
 pub const FCPU: u32 = 25_000_000;
 
 use crate::{
-    entry::_start,
+    entry::{_start, z_systick},
     kernel::{z_pendsv, z_svc},
 };
 
@@ -74,7 +74,7 @@ static VECTOR_TABLE: [unsafe extern "C" fn(); 16] = [
     // PendSV Handler
     z_pendsv,
     // SysTick Handler
-    _default_handler,
+    z_systick,
     // DEVICES INTERRUPTS
 ];
 

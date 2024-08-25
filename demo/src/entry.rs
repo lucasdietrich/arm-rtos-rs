@@ -3,7 +3,7 @@ use core::{ffi::c_void, fmt::Write, intrinsics, ptr::addr_of_mut};
 
 use crate::cortex_m_rt::{enable_irq, k_call_pendsv, FCPU};
 use crate::kernel::{z_current, z_next, Kernel};
-use crate::mps2_an385::{UartDevice, UART0};
+use crate::mps2_an385::{SysTickDevice, UartDevice, SYSTICK, UART0};
 use crate::println;
 use crate::serial::{SerialConfig, SerialTrait};
 use crate::serial_utils::Hex;
@@ -18,6 +18,12 @@ use cortex_m::{
 // init kernel
 static mut KERNEL: Kernel<2> = Kernel::init();
 
+#[no_mangle]
+pub extern "C" fn z_systick() {
+    // TODO Any race condition on the ticks counter ?
+    unsafe { KERNEL.increment_ticks() };
+}
+
 pub fn _start() {
     // Initialize uart
     let mut uart = UartDevice::<FCPU>::new(UART0);
@@ -26,7 +32,15 @@ pub fn _start() {
     let _ = uart.write_str("arm rust RTOS demo starting\n");
     let _ = uart.write_fmt(format_args!("Hello, world: {}\n", Hex::U16(2024)));
 
+    // Set UART0 as main uart
     io::set_uart(uart);
+
+    // Initialize systick
+    #[cfg(feature = "systick")]
+    {
+        let mut systick = SysTickDevice::<FCPU>::new(SYSTICK);
+        systick.configure(1000, true);
+    }
 
     // Show startup state
     let p = cortex_m::Peripherals::take().unwrap();
@@ -57,7 +71,8 @@ pub fn _start() {
             println!("recv: {}", Hex::U8(byte));
 
             println!(
-                "current thread ({}): {}",
+                "[ticks: {}] \tcurrent thread ({}): {}",
+                unsafe { KERNEL.get_ticks() },
                 Hex::U32(unsafe { z_current } as u32),
                 unsafe { KERNEL.current() }
             );

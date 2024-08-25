@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["mps2-an385"]
+default = ["systick", "mps2-an385"]
+systick = []
 mps2-an385 = []
 
 [dependencies]

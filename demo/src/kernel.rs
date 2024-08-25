@@ -103,6 +103,9 @@ extern "C" {
 pub struct Kernel<const N: usize = 1> {
     tasks: [Option<Thread>; N],
     current: usize,
+
+    // Ticks counter
+    ticks: u64,
 }
 
 impl<const N: usize> Kernel<N> {
@@ -112,7 +115,11 @@ impl<const N: usize> Kernel<N> {
 
         tasks[0] = Some(Thread::uninit());
 
-        Kernel { tasks, current: 0 }
+        Kernel {
+            tasks,
+            current: 0,
+            ticks: 0,
+        }
     }
 
     pub fn register_thread(&mut self, thread: Thread) -> Result<*mut Thread, Thread> {
@@ -145,6 +152,16 @@ impl<const N: usize> Kernel<N> {
     pub unsafe fn get_current_ptr(&mut self) -> *mut Thread {
         self.tasks[self.current].as_mut().unwrap() as *mut Thread
     }
+
+    // TODO Any race condition on the ticks counter ?
+    pub fn increment_ticks(&mut self) {
+        self.ticks += 1;
+    }
+
+    // TODO Any race condition on the ticks counter ?
+    pub fn get_ticks(&mut self) -> u64 {
+        self.ticks
+    }
 }
 
 #[repr(C)]
@@ -157,7 +174,7 @@ struct SVCCallParams {
 }
 
 #[no_mangle]
-extern "C" fn do_syscalls(params: *const SVCCallParams) {
+extern "C" fn do_syscall(params: *const SVCCallParams) {
     let params = unsafe { &*params };
 
     match params.syscall_id {
@@ -187,7 +204,7 @@ global_asm!(
     "
     .section .text, \"ax\"
     .global z_svc
-    .global do_syscalls
+    .global do_syscall
     .thumb_func
 z_svc:
     push {{r4, lr}}
@@ -204,11 +221,11 @@ z_svc:
     // Store r4 (syscall ID) in the allocated stack space
     str r4, [sp, #16]       // params.syscall_id = r4
 
-    // Pass the pointer to params (sp) as an argument to do_syscalls
+    // Pass the pointer to params (sp) as an argument to do_syscall
     mov r0, sp              // r0 = params (stack pointer)
 
-    // Call do_syscalls function
-    bl do_syscalls
+    // Call do_syscall function
+    bl do_syscall
 
     // Clean up the stack
     add sp, sp, #20         // Deallocate the 20 bytes of stack space
