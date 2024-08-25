@@ -198,6 +198,9 @@ extern "C" fn do_syscall(params: *const SVCCallParams) {
             // Direct write
             io::write_bytes(slice);
         }
+        3 => {
+            println!("Yield...");
+        }
         0xbadf00d => {
             println!("BEEF!");
         }

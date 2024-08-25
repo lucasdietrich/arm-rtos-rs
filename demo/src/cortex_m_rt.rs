@@ -5,7 +5,7 @@ use core::{
     ptr::{self, addr_of, addr_of_mut},
 };
 
-// Deduplicate
+// TODO move to mps2_an385
 pub const FCPU: u32 = 25_000_000;
 
 use crate::{

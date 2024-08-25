@@ -3,6 +3,7 @@ use core::{arch::asm, ffi::c_void, fmt::Arguments, ptr};
 pub enum SyscallId {
     SLEEP = 1,
     PRINT = 2,
+    YIELD = 3,
     BEEF = 0xbadf00d,
 }
 
@@ -17,6 +18,7 @@ unsafe extern "C" fn z_call_svc_4(
     r3: *mut c_void,
     syscall_id: u32,
 ) {
+    // TODO change this value "#0xbb"
     asm!(
         "
         svc #0xbb
@@ -44,6 +46,18 @@ pub fn k_svc_debug() {
             0xcccccccc as *mut c_void,
             0xdddddddd as *mut c_void,
             SyscallId::BEEF as u32,
+        )
+    }
+}
+
+pub fn k_svc_yield() {
+    unsafe {
+        z_call_svc_4(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            SyscallId::YIELD as u32,
         )
     }
 }
