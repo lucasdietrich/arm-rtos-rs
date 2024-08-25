@@ -1,9 +1,17 @@
 use core::{
     arch::{asm, global_asm},
+    ffi::c_void,
+    mem::{self, MaybeUninit},
     task,
 };
 
-use crate::{println, serial_utils::Hex, threading::Thread};
+use crate::{
+    io::{self, write_bytes},
+    mps2_an385::UART0,
+    println,
+    serial_utils::Hex,
+    threading::Thread,
+};
 
 pub fn sleep(ms: u32) {}
 
@@ -32,9 +40,6 @@ pub fn sleep(ms: u32) {}
 //     "
 // );
 
-// 1. Calls to pendsv saves:
-//  r0-r3, r12, lr, return addr, xpsr
-
 #[link_section = ".bss"]
 #[used]
 pub static mut BSS_MYVAR: u32 = 0;
@@ -47,6 +52,8 @@ pub static mut z_current: *mut Thread = core::ptr::null_mut();
 #[no_mangle]
 pub static mut z_next: *mut Thread = core::ptr::null_mut();
 
+// 1. Calls to pendsv saves:
+//  r0-r3, r12, lr, return addr, xpsr
 global_asm!(
     "
     .section .text, \"ax\"
@@ -138,4 +145,79 @@ impl<const N: usize> Kernel<N> {
     pub unsafe fn get_current_ptr(&mut self) -> *mut Thread {
         self.tasks[self.current].as_mut().unwrap() as *mut Thread
     }
+}
+
+#[repr(C)]
+struct SVCCallParams {
+    pub r0: *mut c_void,
+    pub r1: *mut c_void,
+    pub r2: *mut c_void,
+    pub r3: *mut c_void,
+    pub syscall_id: u32,
+}
+
+#[no_mangle]
+extern "C" fn do_syscalls(params: *const SVCCallParams) {
+    let params = unsafe { &*params };
+
+    match params.syscall_id {
+        1 => {
+            println!("Sleeping...");
+        }
+        2 => {
+            let ptr = params.r0 as *const u8;
+            let len = params.r1 as usize;
+
+            // rebuild &[u8] from (string and len)
+            let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
+
+            // Direct write
+            io::write_bytes(slice);
+        }
+        0xbadf00d => {
+            println!("BEEF!");
+        }
+        _ => {
+            println!("Unknown syscall: {}", params.syscall_id);
+        }
+    }
+}
+
+global_asm!(
+    "
+    .section .text, \"ax\"
+    .global z_svc
+    .global do_syscalls
+    .thumb_func
+z_svc:
+    push {{r4, lr}}
+
+    // Allocate space on the stack for SVCCallParams
+    sub sp, sp, #20         // Allocate 20 bytes (5 * 4 bytes for r0, r1, r2, r3, syscall_id)
+
+    // Store r0-r3 in the allocated stack space
+    str r0, [sp, #0]        // params.r0 = r0
+    str r1, [sp, #4]        // params.r1 = r1
+    str r2, [sp, #8]        // params.r2 = r2
+    str r3, [sp, #12]       // params.r3 = r3
+
+    // Store r4 (syscall ID) in the allocated stack space
+    str r4, [sp, #16]       // params.syscall_id = r4
+
+    // Pass the pointer to params (sp) as an argument to do_syscalls
+    mov r0, sp              // r0 = params (stack pointer)
+
+    // Call do_syscalls function
+    bl do_syscalls
+
+    // Clean up the stack
+    add sp, sp, #20         // Deallocate the 20 bytes of stack space
+
+    // Return from the function
+    pop {{r4, pc}}
+    "
+);
+
+extern "C" {
+    pub fn z_svc();
 }

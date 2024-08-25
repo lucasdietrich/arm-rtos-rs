@@ -13,6 +13,7 @@ mod serial;
 mod serial_utils;
 mod task;
 mod threading;
+mod userspace;
 
 #[cfg(feature = "mps2-an385")]
 mod mps2_an385;

@@ -17,7 +17,15 @@ pub fn read() -> Option<u8> {
     }
 }
 
-pub fn _print(args: Arguments<'_>, nl: bool) {
+pub fn write_bytes(bytes: &[u8]) {
+    if let Some(uart) = unsafe { STDIO_UART.as_mut() } {
+        for byte in bytes {
+            uart.write_byte(*byte)
+        }
+    }
+}
+
+pub fn write_args(args: Arguments<'_>, nl: bool) {
     if let Some(uart) = unsafe { STDIO_UART.as_mut() } {
         let _ = uart.write_fmt(args);
 
@@ -31,16 +39,16 @@ pub fn _print(args: Arguments<'_>, nl: bool) {
 macro_rules! print {
     () => {};
     ($($arg:tt)*) => {{
-        $crate::io::_print(format_args!($($arg)*), false);
+        $crate::io::write_args(format_args!($($arg)*), false)
     }};
 }
 
 #[macro_export]
 macro_rules! println {
     () => {
-        $crate::io::_print(format_args!("\n"), false);
+        $crate::io::write_args(format_args!("\n"), false)
     };
     ($($arg:tt)*) => {{
-        $crate::io::_print(format_args!($($arg)*), true);
+        $crate::io::write_args(format_args!($($arg)*), true)
     }}
 }

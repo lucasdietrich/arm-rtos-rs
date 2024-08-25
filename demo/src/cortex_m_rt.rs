@@ -9,8 +9,8 @@ use core::{
 pub const FCPU: u32 = 25_000_000;
 
 use crate::{
-    entry::{_start, _svc},
-    kernel::z_pendsv,
+    entry::_start,
+    kernel::{z_pendsv, z_svc},
 };
 
 #[panic_handler]
@@ -66,7 +66,7 @@ static VECTOR_TABLE: [unsafe extern "C" fn(); 16] = [
     // Reserved
     _unimplemented,
     // SVCall Handler
-    _svc,
+    z_svc,
     // Debug Monitor Handler
     _default_handler,
     // Reserved
@@ -140,47 +140,13 @@ pub fn reg_modify(reg: *mut u32, val: u32, mask: u32) {
 //  R1
 //  R0
 #[no_mangle]
-pub unsafe extern "C" fn trig_pendsv() {
+pub unsafe extern "C" fn k_call_pendsv() {
     // This code is equivalent to
     // unsafe { p.SCB.icsr.modify(|r| r | 1 << 28) }; // SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 
     const ICSR: *mut u32 = 0xE000_ED04 as *mut u32;
     const PENDSVSET_BIT: u32 = 1 << 28;
     reg_modify(ICSR, PENDSVSET_BIT, PENDSVSET_BIT);
-}
-
-#[no_mangle]
-// Read A7.7.175 of DDI0403E_B_armv7m_arm.pdf
-// TODO how to read back svc value 0xbb
-// -> read pc-4
-pub unsafe extern "C" fn trig_svc_alt(
-    r0: *mut c_void,
-    r1: *mut c_void,
-    r2: *mut c_void,
-    r3: *mut c_void,
-) {
-    asm!(
-        "
-        svc #0xbb
-    ",
-    in("r0") r0,
-    in("r1") r1,
-    in("r2") r2,
-    in("r3") r3,
-
-    // Indication:
-    options(nostack, nomem),
-    );
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn trig_svc_default() {
-    trig_svc_alt(
-        0xaaaaaaaa as *mut c_void,
-        0xbbbbbbbb as *mut c_void,
-        0xcccccccc as *mut c_void,
-        0xdddddddd as *mut c_void,
-    )
 }
 
 // Stack frame produced by an exception

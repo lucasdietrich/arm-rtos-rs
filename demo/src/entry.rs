@@ -1,13 +1,14 @@
 use core::arch::asm;
 use core::{ffi::c_void, fmt::Write, intrinsics, ptr::addr_of_mut};
 
-use crate::cortex_m_rt::{enable_irq, trig_pendsv, trig_svc_default, FCPU};
+use crate::cortex_m_rt::{enable_irq, k_call_pendsv, FCPU};
 use crate::kernel::{z_current, z_next, Kernel};
 use crate::mps2_an385::{UartDevice, UART0};
 use crate::println;
 use crate::serial::{SerialConfig, SerialTrait};
 use crate::serial_utils::Hex;
 use crate::threading::{Stack, Thread};
+use crate::userspace::{k_svc_debug, k_svc_print, k_svc_sleep};
 use crate::{io, print};
 use cortex_m::{
     register::{self, control::Control},
@@ -16,12 +17,6 @@ use cortex_m::{
 
 // init kernel
 static mut KERNEL: Kernel<2> = Kernel::init();
-
-#[no_mangle]
-pub unsafe extern "C" fn _svc() {
-    // svc arguments are in r0-r3
-    asm!("nop");
-}
 
 pub fn _start() {
     // Initialize uart
@@ -70,19 +65,25 @@ pub fn _start() {
             match byte {
                 b'p' => unsafe {
                     println!("PendSV !");
-                    trig_pendsv();
+                    k_call_pendsv();
 
                     let temp = z_current;
                     z_current = z_next;
                     z_next = temp;
                 },
-                b'v' => unsafe {
-                    println!("SVC !");
-                    trig_svc_default();
-                },
-                b'u' => unsafe {
-                    // start user process
-                },
+                b's' => {
+                    println!("SVC sleep");
+                    k_svc_sleep(1000);
+                }
+                b'v' => {
+                    println!("SVC debug");
+                    k_svc_debug();
+                }
+                b'w' => {
+                    println!("SVC print");
+                    let msg = "Hello using SVC !!\n";
+                    k_svc_print(msg);
+                }
                 b'a' => {
                     println!("aborting...");
                     intrinsics::abort();
@@ -109,7 +110,7 @@ extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
             z_next = temp;
         }
 
-        unsafe { trig_pendsv() };
+        unsafe { k_call_pendsv() };
 
         counter = counter.wrapping_add(1);
     }
