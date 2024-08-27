@@ -10,7 +10,8 @@ pub const FCPU: u32 = 25_000_000;
 
 use crate::{
     entry::{_start, z_systick},
-    kernel::{z_pendsv, z_svc},
+    kernel::z_pendsv,
+    syscalls::z_svc,
 };
 
 #[panic_handler]

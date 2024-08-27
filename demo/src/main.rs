@@ -6,13 +6,15 @@
 #![feature(maybe_uninit_uninit_array)]
 
 mod cortex_m_rt;
+mod critical_section;
 mod entry;
+mod errno;
 mod io;
 mod kernel;
 mod serial;
 mod serial_utils;
+mod syscalls;
 mod systick;
-mod task;
 mod threading;
 mod userspace;
 

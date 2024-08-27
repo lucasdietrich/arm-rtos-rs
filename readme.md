@@ -12,7 +12,9 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 - [QEMU / System Emulation / Generic Loader](https://www.qemu.org/docs/master/system/generic-loader.html)
 - [crate: cortex_m_rt](https://docs.rs/cortex-m-rt/latest/cortex_m_rt/)
 - [Embedded Systems Security and TrustZone](https://embeddedsecurity.io/)
-- [The Rust Reference: Inline assembly](https://doc.rust-lang.org/reference/inline-assembly.html)
+- Inline assembly:
+  - [The Rust Reference: Inline assembly](https://doc.rust-lang.org/reference/inline-assembly.html)
+  - [Nightly: Inline assembly](https://doc.rust-lang.org/nightly/rust-by-example/unsafe/asm.html)
 
 ### Datasheets:
 

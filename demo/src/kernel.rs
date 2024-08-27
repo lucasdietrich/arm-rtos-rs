@@ -1,48 +1,8 @@
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
+use core::arch::global_asm;
 
-use core::{
-    arch::{asm, global_asm},
-    ffi::c_void,
-    mem::{self, MaybeUninit},
-    task,
-};
-
-use crate::{
-    io::{self, write_bytes},
-    mps2_an385::UART0,
-    println,
-    serial_utils::Hex,
-    threading::Thread,
-    userspace::SyscallId,
-};
+use crate::{critical_section::Cs, threading::Thread};
 
 pub fn sleep(ms: u32) {}
-
-// 1. Calls to pendsv saves:
-//  r0-r3, r12, lr, return addr, xpsr
-// 2. 'from' thread's SP addr is written to r0
-// 3. 'to' thread's SP addr is written to r1
-// r4-r11 must be saved
-// global_asm!(
-//     "
-//     .section .text, \"ax\"
-//     .global _thread_switch
-//     .thumb_func
-// _thread_switch:
-//     # save 'from' thread context
-//     push {{r4-r11, lr}}
-
-//     # save sp to 'from' thread
-//     str sp, [r0]
-
-//     # load sp from 'from' thread
-//     ldr sp, [r1]
-
-//     # restore 'to' thread context
-//     pop {{r4-r11, pc}}
-//     "
-// );
 
 #[link_section = ".bss"]
 #[used]
@@ -64,10 +24,6 @@ global_asm!(
     .global z_pendsv
     .thumb_func
 z_pendsv:
-
-    // save current lr (exception return) to r2
-    // mov r2, lr
-
     // retrieve address of current thread and save it in r0
     ldr r2, =z_current
     ldr r0, [r2]
@@ -75,9 +31,6 @@ z_pendsv:
     ldr r1, [r3]
 
 _thread_switch:
-    // call debug function
-    // b z_debug
-
     // save 'from' thread context
     push {{v1-v8, ip}}
 
@@ -89,10 +42,6 @@ _thread_switch:
 
     // restore 'to' thread context
     pop {{v1-v8, ip}}
-
-    // invert z_current and z_next threads
-    // str r2, [r1]
-    // str r3, [r0]
 
     // load KERNEL structure into r0
     bx lr
@@ -127,6 +76,8 @@ impl<const N: usize, const F: u32> Kernel<N, F> {
             ticks: 0,
         }
     }
+
+    pub fn start(&mut self, _cs: Cs<Kernel>) {}
 
     pub fn register_thread(&mut self, thread: Thread) -> Result<*mut Thread, Thread> {
         if let Some(slot) = self.tasks.iter_mut().find(|slot| slot.is_none()) {
@@ -173,114 +124,4 @@ impl<const N: usize, const F: u32> Kernel<N, F> {
         let end = self.get_ticks().saturating_add(((ms * F) / 1000) as u64);
         while self.get_ticks() < end {}
     }
-}
-
-#[repr(C)]
-struct SVCCallParams {
-    pub r0: u32,
-    pub r1: u32,
-    pub r2: u32,
-    pub r3: u32,
-    pub syscall_id: u32,
-}
-
-#[no_mangle]
-extern "C" fn do_syscall(params: *const SVCCallParams) -> i32 {
-    let params = unsafe { &*params };
-
-    if let Some(syscall_id) = FromPrimitive::from_u32(params.syscall_id) {
-        match syscall_id {
-            SyscallId::SLEEP => {
-                println!("Sleeping...");
-            }
-            SyscallId::PRINT => {
-                let ptr = params.r0 as *const u8;
-                let len = params.r1 as usize;
-
-                // rebuild &[u8] from (string and len)
-                let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
-
-                // Direct write
-                io::write_bytes(slice);
-            }
-            SyscallId::YIELD => {
-                println!("Yield...");
-            }
-            SyscallId::BEEF => {
-                println!("BEEF!");
-            }
-        }
-    } else {
-        println!("Unknown syscall: {}", params.syscall_id);
-    }
-
-    17
-}
-
-global_asm!(
-    "
-    .section .text, \"ax\"
-    .global z_svc
-    .global do_syscall
-    .thumb_func
-z_svc:
-    // At this point, the exception frame looks like this
-    // sp + 00: r0 (syscall arg 0)
-    // sp + 04: r1 (syscall arg 1)
-    // sp + 08: r2 (syscall arg 2)
-    // sp + 0C: r3 (syscall arg 3)
-    // sp + 10: r12
-    // sp + 14: lr
-    // sp + 18: return address (instruction following the svc)
-    // sp + 1C: xPSR
-
-    push {{r4, lr}}
-
-    // Allocate space on the stack for SVCCallParams
-    sub sp, sp, #20         // Allocate 20 bytes (5 * 4 bytes for r0, r1, r2, r3, syscall_id)
-
-    // Store r0-r3 in the allocated stack space
-    str r0, [sp, #0]        // params.r0 = r0
-    str r1, [sp, #4]        // params.r1 = r1
-    str r2, [sp, #8]        // params.r2 = r2
-    str r3, [sp, #12]       // params.r3 = r3
-
-    // Store r4 (syscall ID) in the allocated stack space
-    str r4, [sp, #16]       // params.syscall_id = r4
-
-    // Pass the pointer to params (sp) as an argument to do_syscall
-    mov r0, sp              // r0 = params (stack pointer)
-
-    // Call do_syscall function
-    bl do_syscall
-
-    // r0 contains do_syscall returned value
-
-    // Clean up the stack
-    add sp, sp, #20         // Deallocate the 20 bytes of stack space
-
-    // Replace value of r0 in the exception stack frame, so that when the 
-    // exception returns. The return value of the syscall is automatically 
-    // set in r0
-    str r0, [sp, #8]
-
-    // At this point, the exception frame looks like this
-    // sp + 00: next pc (old lr)
-    // sp + 04: next r4 (old r4)
-    // sp + 08: SYSCALL RETURN VALUE (old r0)
-    // sp + 0C: r1 (syscall arg 1)
-    // sp + 10: r2 (syscall arg 2)
-    // sp + 14: r3 (syscall arg 3)
-    // sp + 18: r12
-    // sp + 1C: lr
-    // sp + 20: return address (instruction following the svc)
-    // sp + 24: xPSR
-
-    // Return from the function
-    pop {{r4, pc}}
-    "
-);
-
-extern "C" {
-    pub fn z_svc();
 }

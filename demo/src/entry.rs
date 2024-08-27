@@ -9,7 +9,7 @@ use crate::serial::{SerialConfig, SerialTrait};
 use crate::serial_utils::Hex;
 use crate::systick::SysTickDevice;
 use crate::threading::{Stack, Thread};
-use crate::userspace::{k_svc_debug, k_svc_print, k_svc_sleep, k_svc_yield};
+use crate::userspace::{k_svc_print, k_svc_sleep, k_svc_yield};
 use crate::{io, print};
 use cortex_m::{
     register::{self, control::Control},
@@ -106,7 +106,7 @@ pub fn _start() {
                 }
                 b'v' => {
                     println!("SVC debug");
-                    syscall_ret = k_svc_debug();
+                    syscall_ret = k_svc_yield();
                 }
                 b'w' => {
                     println!("SVC print");
