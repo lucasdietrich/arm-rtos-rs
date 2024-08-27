@@ -34,7 +34,11 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [x] Vector table
     - [x] Reset handler
     - [x] PendSV
+      - [ ] Configure lowest priority (0b111)
+    - [x] SVCall
+      - [ ] Configure lowest priority (0b111)
     - [x] Systick
+      - [ ] Configure highest priority (0b000)
     - [ ] Other interrupts
 - [ ] Peripherals:
     - [ ] UART
@@ -189,3 +193,13 @@ If you want to watch a static rust variable, you need to use its full name, for 
 ![pics/cortex-debug-watch-rust-static.png](pics/cortex-debug-watch-rust-static.png)
 
 The full names can be found in the output of `nm`: e.g. `2000000c 00000014 d demo::KERNEL`
+
+### PhantomData of non generic (TODO)
+
+What is the purpose of `PhantomData` in the following code ?
+
+```rs
+pub struct SCB {
+    _marker: PhantomData<*const ()>,
+}
+```

@@ -1,9 +1,14 @@
 use core::{ffi::c_void, fmt::Write, intrinsics, ptr::addr_of_mut};
 
-use cortex_m::{register::control::Control, Peripherals};
+use cortex_m::register::control::Control;
 use kernel::{
     cortex_m::{
+        arm::SYSTICK,
         cortex_m_rt::{k_call_pendsv, FCPU},
+        critical_section,
+        interrupts::atomic_section,
+        irqn::SysIrqn,
+        scb::SCB,
         systick::SysTickDevice,
     },
     kernel::{
@@ -13,7 +18,7 @@ use kernel::{
     },
     serial::{SerialConfig, SerialTrait},
     serial_utils::Hex,
-    soc::mps2_an385::{UartDevice, SYSTICK, UART0},
+    soc::mps2_an385::{UartDevice, UART0},
     stdio,
 };
 use kernel::{print, println};
@@ -33,6 +38,8 @@ pub extern "C" fn z_systick() {
 pub extern "C" fn _start() {
     // Invoke kernel crate
 
+    atomic_section::<false, _, _>(|_cs| {});
+
     kernel::test();
 
     // Initialize uart
@@ -48,9 +55,34 @@ pub extern "C" fn _start() {
     let mut systick = SysTickDevice::<FCPU, 0>::new(SYSTICK);
     systick.configure::<FST>(true);
 
-    // Show startup state
-    let p = cortex_m::Peripherals::take().unwrap();
-    display_cpuid(&p);
+    // Show startup state    let cpuid = SCB::new().get_cpuid();
+    let mut scb = SCB::new();
+    println!("CPUID base: {}", Hex::U32(scb.get_cpuid()));
+
+    println!(
+        "Systick prio: {}",
+        Hex::U8(scb.get_priority(SysIrqn::SYSTICK))
+    );
+    println!(
+        "PendSV prio: {}",
+        Hex::U8(scb.get_priority(SysIrqn::PENDSV))
+    );
+    println!("SVC prio: {}", Hex::U8(scb.get_priority(SysIrqn::SVCALL)));
+
+    scb.set_priority(SysIrqn::PENDSV, 0x7);
+    scb.set_priority(SysIrqn::SVCALL, 0x7);
+    scb.set_priority(SysIrqn::SYSTICK, 0);
+
+    println!(
+        "Systick prio: {}",
+        Hex::U8(scb.get_priority(SysIrqn::SYSTICK))
+    );
+    println!(
+        "PendSV prio: {}",
+        Hex::U8(scb.get_priority(SysIrqn::PENDSV))
+    );
+    println!("SVC prio: {}", Hex::U8(scb.get_priority(SysIrqn::SVCALL)));
+
     display_control_register();
 
     #[link_section = ".noinit"]
@@ -144,12 +176,6 @@ extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
 
         counter = counter.wrapping_add(1);
     }
-}
-
-// Read CPUID base register
-fn display_cpuid(p: &Peripherals) {
-    let cpuid_base = p.CPUID.base.read();
-    println!("CPUID base: {}", Hex::U32(cpuid_base));
 }
 
 fn display_control_register() {

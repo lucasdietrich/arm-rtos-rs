@@ -106,7 +106,7 @@ pub unsafe extern "C" fn _reset_handler() {
     let data_size = addr_of!(_sdata) as usize - addr_of!(_sbss) as usize;
     ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
 
-    // Call the entry point of the program
+    // Call the entry point of the program (it is the main !)
     _start();
 
     // Loop forever if _start returns
@@ -139,35 +139,4 @@ pub unsafe extern "C" fn k_call_pendsv() {
     const ICSR: *mut u32 = 0xE000_ED04 as *mut u32;
     const PENDSVSET_BIT: u32 = 1 << 28;
     reg_modify(ICSR, PENDSVSET_BIT, PENDSVSET_BIT);
-}
-
-// Stack frame produced by an exception
-#[repr(C)]
-#[allow(non_camel_case_types)]
-pub struct __basic_sf {
-    pub r0: u32,
-    pub r1: u32,
-    pub r2: u32,
-    pub r3: u32,
-    pub r12: u32,
-    pub lr: u32, // r14 (unset on thread entry)
-    pub pc: u32, // r15 (return address ra in some context)
-    pub xpsr: u32,
-}
-
-// Representation of the callee saved context in stack
-// WARNING: This structure is not 8B aligned !
-// This might be moved to thread structure to avoid SP aligned issues
-#[repr(C)]
-#[allow(non_camel_case_types)]
-pub struct __callee_context {
-    pub v1: u32,
-    pub v2: u32,
-    pub v3: u32,
-    pub v4: u32,
-    pub v5: u32,
-    pub v6: u32,
-    pub v7: u32,
-    pub v8: u32,
-    pub ip: u32,
 }

@@ -1,14 +1,6 @@
-use core::{
-    ffi::c_void,
-    fmt::Display,
-    ptr::{addr_of, null_mut},
-};
+use core::{ffi::c_void, fmt::Display, ptr::null_mut};
 
-use crate::{
-    cortex_m::cortex_m_rt::{__basic_sf, __callee_context},
-    println,
-    serial_utils::Hex,
-};
+use crate::cortex_m::arm::{__basic_sf, __callee_context};
 
 // This function can be naked as it will never return !
 type ThreadEntry = extern "C" fn(*mut c_void) -> !;

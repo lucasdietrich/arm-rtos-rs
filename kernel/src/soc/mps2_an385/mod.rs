@@ -17,8 +17,3 @@ pub const UART1: *mut Uart = UART1_BASE as *mut Uart;
 pub const UART2: *mut Uart = UART2_BASE as *mut Uart;
 pub const UART3: *mut Uart = UART3_BASE as *mut Uart;
 pub const UART4: *mut Uart = UART4_BASE as *mut Uart;
-
-pub const SCS_BASE: usize = 0xE000E000;
-
-pub const SYSTICK_BASE: usize = SCS_BASE + 0x0010;
-pub const SYSTICK: *mut SysTick = SYSTICK_BASE as *mut SysTick;
