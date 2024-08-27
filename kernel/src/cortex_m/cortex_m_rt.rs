@@ -1,18 +1,12 @@
 use core::{
-    arch::asm,
-    ffi::c_void,
     intrinsics::{volatile_load, volatile_store},
     ptr::{self, addr_of, addr_of_mut},
 };
 
+use crate::kernel::{kernel::z_pendsv, syscalls::z_svc};
+
 // TODO move to mps2_an385
 pub const FCPU: u32 = 25_000_000;
-
-use crate::{
-    entry::{_start, z_systick},
-    kernel::z_pendsv,
-    syscalls::z_svc,
-};
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
@@ -34,10 +28,17 @@ pub unsafe extern "C" fn _fault_handler() {
     loop {}
 }
 
+/* External symbols defined in the application */
 extern "C" {
     // Not a real function, but a symbol in the linker script
     // which points to the top of the stack
     fn _stack_top();
+
+    /* TODO move to the current crate */
+    fn z_systick();
+
+    /* main of the application */
+    fn _start();
 }
 
 #[no_mangle]
@@ -110,16 +111,6 @@ pub unsafe extern "C" fn _reset_handler() {
 
     // Loop forever if _start returns
     loop {}
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn enable_irq() {
-    asm!("cpsid i");
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn disable_irq() {
-    asm!("cpsie i");
 }
 
 pub fn reg_modify(reg: *mut u32, val: u32, mask: u32) {

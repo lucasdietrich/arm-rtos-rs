@@ -1,20 +1,22 @@
-use core::arch::asm;
 use core::{ffi::c_void, fmt::Write, intrinsics, ptr::addr_of_mut};
 
-use crate::cortex_m_rt::{enable_irq, k_call_pendsv, FCPU};
-use crate::kernel::{z_current, z_next, Kernel};
-use crate::mps2_an385::{UartDevice, SYSTICK, UART0};
-use crate::println;
-use crate::serial::{SerialConfig, SerialTrait};
-use crate::serial_utils::Hex;
-use crate::systick::SysTickDevice;
-use crate::threading::{Stack, Thread};
-use crate::userspace::{k_svc_print, k_svc_sleep, k_svc_yield};
-use crate::{io, print};
-use cortex_m::{
-    register::{self, control::Control},
-    Peripherals,
+use cortex_m::{register::control::Control, Peripherals};
+use kernel::{
+    cortex_m::{
+        cortex_m_rt::{k_call_pendsv, FCPU},
+        systick::SysTickDevice,
+    },
+    kernel::{
+        kernel::{z_current, z_next, Kernel},
+        threading::{Stack, Thread},
+        userspace,
+    },
+    serial::{SerialConfig, SerialTrait},
+    serial_utils::Hex,
+    soc::mps2_an385::{UartDevice, SYSTICK, UART0},
+    stdio,
 };
+use kernel::{print, println};
 
 const FST: u32 = 1_000; // Hz
 
@@ -27,7 +29,8 @@ pub extern "C" fn z_systick() {
     unsafe { KERNEL.increment_ticks() };
 }
 
-pub fn _start() {
+#[no_mangle]
+pub extern "C" fn _start() {
     // Invoke kernel crate
 
     kernel::test();
@@ -40,14 +43,10 @@ pub fn _start() {
     let _ = uart.write_fmt(format_args!("Hello, world: {}\n", Hex::U16(2024)));
 
     // Set UART0 as main uart
-    io::set_uart(uart);
+    stdio::set_uart(uart);
 
-    // Initialize systick
-    #[cfg(feature = "systick")]
-    {
-        let mut systick = SysTickDevice::<FCPU>::new(SYSTICK);
-        systick.configure::<FST>(true);
-    }
+    let mut systick = SysTickDevice::<FCPU, 0>::new(SYSTICK);
+    systick.configure::<FST>(true);
 
     // Show startup state
     let p = cortex_m::Peripherals::take().unwrap();
@@ -74,7 +73,7 @@ pub fn _start() {
     unsafe { z_current = KERNEL.get_current_ptr() };
 
     loop {
-        if let Some(byte) = io::read() {
+        if let Some(byte) = stdio::read() {
             println!("recv: {}", Hex::U8(byte));
 
             println!(
@@ -98,20 +97,20 @@ pub fn _start() {
                 },
                 b'y' => {
                     println!("SVC yield");
-                    syscall_ret = k_svc_yield();
+                    syscall_ret = userspace::k_svc_yield();
                 }
                 b's' => {
                     println!("SVC sleep");
-                    syscall_ret = k_svc_sleep(1000);
+                    syscall_ret = userspace::k_svc_sleep(1000);
                 }
                 b'v' => {
                     println!("SVC debug");
-                    syscall_ret = k_svc_yield();
+                    syscall_ret = userspace::k_svc_yield();
                 }
                 b'w' => {
                     println!("SVC print");
                     let msg = "Hello using SVC !!\n";
-                    syscall_ret = k_svc_print(msg);
+                    syscall_ret = userspace::k_svc_print(msg);
                 }
                 b'a' => {
                     println!("aborting...");

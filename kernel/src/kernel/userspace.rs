@@ -1,6 +1,6 @@
 use core::{arch::asm, ffi::c_void, fmt::Arguments, ptr};
 
-use crate::syscalls::SyscallId;
+use super::syscalls::SyscallId;
 
 // Read A7.7.175 of DDI0403E_B_armv7m_arm.pdf
 // TODO how to read back svc value 0xbb

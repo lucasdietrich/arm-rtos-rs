@@ -4,12 +4,13 @@ use num_traits::FromPrimitive;
 use core::arch::global_asm;
 
 use crate::{
-    critical_section::Cs,
-    errno::Kerr,
-    io::{self},
-    kernel::Kernel,
+    cortex_m::critical_section::Cs,
+    kernel::errno::Kerr,
     println,
+    stdio::{self},
 };
+
+use super::kernel::Kernel;
 
 #[repr(u32)]
 #[derive(FromPrimitive)]
@@ -48,7 +49,7 @@ extern "C" fn do_syscall(params: *const SVCCallParams) -> i32 {
                 let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
 
                 // Direct write
-                io::write_bytes(slice);
+                stdio::write_bytes(slice);
                 0
             }
             SyscallId::YIELD => {

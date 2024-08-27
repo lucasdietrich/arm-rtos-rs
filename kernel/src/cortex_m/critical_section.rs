@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::kernel::Kernel;
+use crate::kernel::kernel::Kernel;
 
 trait Sealed {}
 

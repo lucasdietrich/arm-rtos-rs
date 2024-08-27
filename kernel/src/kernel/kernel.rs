@@ -1,6 +1,8 @@
 use core::arch::global_asm;
 
-use crate::{critical_section::Cs, threading::Thread};
+use crate::cortex_m::critical_section::Cs;
+
+use super::threading::Thread;
 
 pub fn sleep(ms: u32) {}
 

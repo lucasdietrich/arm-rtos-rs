@@ -1,0 +1,9 @@
+pub const NONMASKABLEINT: i32 = -14; /*  2 Non Maskable Interrupt */
+pub const HARDFAULT: i32 = -13; /*  3 HardFault Interrupt */
+pub const MEMORYMANAGEMENT: i32 = -12; /*  4 Memory Management Interrupt */
+pub const BUSFAULT: i32 = -11; /*  5 Bus Fault Interrupt */
+pub const USAGEFAULT: i32 = -10; /*  6 Usage Fault Interrupt */
+pub const SVCALL: i32 = -5; /* 11 SV Call Interrupt */
+pub const DEBUGMONITOR: i32 = -4; /* 12 Debug Monitor Interrupt */
+pub const PENDSV: i32 = -2; /* 14 Pend SV Interrupt */
+pub const SYSTICK: i32 = -1; /* 15 System Tick Interrupt */
