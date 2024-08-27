@@ -115,12 +115,10 @@ impl<const N: usize, const F: u32> Kernel<N, F> {
         self.tasks[self.current].as_mut().unwrap() as *mut Thread
     }
 
-    // TODO Any race condition on the ticks counter ?
     pub fn increment_ticks(&mut self, _cs: &Cs<GlobalIrq>) {
         self.ticks += 1;
     }
 
-    // TODO Any race condition on the ticks counter ?
     pub fn get_ticks(&self) -> u64 {
         atomic_restore(|_cs| self.ticks)
     }
