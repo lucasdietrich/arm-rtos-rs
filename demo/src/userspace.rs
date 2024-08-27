@@ -1,5 +1,9 @@
 use core::{arch::asm, ffi::c_void, fmt::Arguments, ptr};
 
+use num_derive::FromPrimitive;
+
+#[repr(u32)]
+#[derive(FromPrimitive)]
 pub enum SyscallId {
     SLEEP = 1,
     PRINT = 2,
@@ -11,19 +15,13 @@ pub enum SyscallId {
 // TODO how to read back svc value 0xbb
 // -> read pc-4
 #[no_mangle]
-unsafe extern "C" fn z_call_svc_4(
-    r0: *mut c_void,
-    r1: *mut c_void,
-    r2: *mut c_void,
-    r3: *mut c_void,
-    syscall_id: u32,
-) {
+unsafe extern "C" fn z_call_svc_4(mut r0: u32, r1: u32, r2: u32, r3: u32, syscall_id: u32) -> i32 {
     // TODO change this value "#0xbb"
     asm!(
         "
         svc #0xbb
     ",
-    in("r0") r0,
+    inout("r0") r0,
     in("r1") r1,
     in("r2") r2,
     in("r3") r3,
@@ -36,51 +34,37 @@ unsafe extern "C" fn z_call_svc_4(
     // Indication:
     options(nostack, nomem),
     );
+
+    r0 as i32
 }
 
-pub fn k_svc_debug() {
+pub fn k_svc_debug() -> i32 {
     unsafe {
         z_call_svc_4(
-            0xaaaaaaaa as *mut c_void,
-            0xbbbbbbbb as *mut c_void,
-            0xcccccccc as *mut c_void,
-            0xdddddddd as *mut c_void,
+            0xaaaaaaaa,
+            0xbbbbbbbb,
+            0xcccccccc,
+            0xdddddddd,
             SyscallId::BEEF as u32,
         )
     }
 }
 
-pub fn k_svc_yield() {
-    unsafe {
-        z_call_svc_4(
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            SyscallId::YIELD as u32,
-        )
-    }
+pub fn k_svc_yield() -> i32 {
+    unsafe { z_call_svc_4(0, 0, 0, 0, SyscallId::YIELD as u32) }
 }
 
-pub fn k_svc_sleep(ms: u32) {
-    unsafe {
-        z_call_svc_4(
-            ms as *mut c_void,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            SyscallId::SLEEP as u32,
-        )
-    }
+pub fn k_svc_sleep(ms: u32) -> i32 {
+    unsafe { z_call_svc_4(ms, 0, 0, 0, SyscallId::SLEEP as u32) }
 }
 
-pub fn k_svc_print(string: &str) {
+pub fn k_svc_print(string: &str) -> i32 {
     unsafe {
         z_call_svc_4(
-            string.as_ptr() as *mut c_void,
-            string.len() as *mut c_void,
-            ptr::null_mut(),
-            ptr::null_mut(),
+            string.as_ptr() as u32,
+            string.len() as u32,
+            0,
+            0,
             SyscallId::PRINT as u32,
         )
     }

@@ -28,6 +28,10 @@ pub extern "C" fn z_systick() {
 }
 
 pub fn _start() {
+    // Invoke kernel crate
+
+    kernel::test();
+
     // Initialize uart
     let mut uart = UartDevice::<FCPU>::new(UART0);
     let uart_config = SerialConfig::default();
@@ -80,6 +84,8 @@ pub fn _start() {
                 unsafe { KERNEL.current() }
             );
 
+            let mut syscall_ret = 0;
+
             match byte {
                 b'b' => unsafe { KERNEL.busy_wait(1000) },
                 b'p' => unsafe {
@@ -92,20 +98,20 @@ pub fn _start() {
                 },
                 b'y' => {
                     println!("SVC yield");
-                    k_svc_yield();
+                    syscall_ret = k_svc_yield();
                 }
                 b's' => {
                     println!("SVC sleep");
-                    k_svc_sleep(1000);
+                    syscall_ret = k_svc_sleep(1000);
                 }
                 b'v' => {
                     println!("SVC debug");
-                    k_svc_debug();
+                    syscall_ret = k_svc_debug();
                 }
                 b'w' => {
                     println!("SVC print");
                     let msg = "Hello using SVC !!\n";
-                    k_svc_print(msg);
+                    syscall_ret = k_svc_print(msg);
                 }
                 b'a' => {
                     println!("aborting...");
@@ -113,6 +119,8 @@ pub fn _start() {
                 }
                 _ => {}
             }
+
+            println!("syscall_ret: {}", Hex::U32(syscall_ret as u32));
         }
     }
 }

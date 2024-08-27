@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "demo"
+    "demo",
+    "kernel",
 ]
 
 [profile.dev]

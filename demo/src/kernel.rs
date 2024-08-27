@@ -1,3 +1,6 @@
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
+
 use core::{
     arch::{asm, global_asm},
     ffi::c_void,
@@ -11,6 +14,7 @@ use crate::{
     println,
     serial_utils::Hex,
     threading::Thread,
+    userspace::SyscallId,
 };
 
 pub fn sleep(ms: u32) {}
@@ -173,41 +177,44 @@ impl<const N: usize, const F: u32> Kernel<N, F> {
 
 #[repr(C)]
 struct SVCCallParams {
-    pub r0: *mut c_void,
-    pub r1: *mut c_void,
-    pub r2: *mut c_void,
-    pub r3: *mut c_void,
+    pub r0: u32,
+    pub r1: u32,
+    pub r2: u32,
+    pub r3: u32,
     pub syscall_id: u32,
 }
 
 #[no_mangle]
-extern "C" fn do_syscall(params: *const SVCCallParams) {
+extern "C" fn do_syscall(params: *const SVCCallParams) -> i32 {
     let params = unsafe { &*params };
 
-    match params.syscall_id {
-        1 => {
-            println!("Sleeping...");
-        }
-        2 => {
-            let ptr = params.r0 as *const u8;
-            let len = params.r1 as usize;
+    if let Some(syscall_id) = FromPrimitive::from_u32(params.syscall_id) {
+        match syscall_id {
+            SyscallId::SLEEP => {
+                println!("Sleeping...");
+            }
+            SyscallId::PRINT => {
+                let ptr = params.r0 as *const u8;
+                let len = params.r1 as usize;
 
-            // rebuild &[u8] from (string and len)
-            let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
+                // rebuild &[u8] from (string and len)
+                let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
 
-            // Direct write
-            io::write_bytes(slice);
+                // Direct write
+                io::write_bytes(slice);
+            }
+            SyscallId::YIELD => {
+                println!("Yield...");
+            }
+            SyscallId::BEEF => {
+                println!("BEEF!");
+            }
         }
-        3 => {
-            println!("Yield...");
-        }
-        0xbadf00d => {
-            println!("BEEF!");
-        }
-        _ => {
-            println!("Unknown syscall: {}", params.syscall_id);
-        }
+    } else {
+        println!("Unknown syscall: {}", params.syscall_id);
     }
+
+    17
 }
 
 global_asm!(
@@ -217,6 +224,16 @@ global_asm!(
     .global do_syscall
     .thumb_func
 z_svc:
+    // At this point, the exception frame looks like this
+    // sp + 00: r0 (syscall arg 0)
+    // sp + 04: r1 (syscall arg 1)
+    // sp + 08: r2 (syscall arg 2)
+    // sp + 0C: r3 (syscall arg 3)
+    // sp + 10: r12
+    // sp + 14: lr
+    // sp + 18: return address (instruction following the svc)
+    // sp + 1C: xPSR
+
     push {{r4, lr}}
 
     // Allocate space on the stack for SVCCallParams
@@ -237,8 +254,27 @@ z_svc:
     // Call do_syscall function
     bl do_syscall
 
+    // r0 contains do_syscall returned value
+
     // Clean up the stack
     add sp, sp, #20         // Deallocate the 20 bytes of stack space
+
+    // Replace value of r0 in the exception stack frame, so that when the 
+    // exception returns. The return value of the syscall is automatically 
+    // set in r0
+    str r0, [sp, #8]
+
+    // At this point, the exception frame looks like this
+    // sp + 00: next pc (old lr)
+    // sp + 04: next r4 (old r4)
+    // sp + 08: SYSCALL RETURN VALUE (old r0)
+    // sp + 0C: r1 (syscall arg 1)
+    // sp + 10: r2 (syscall arg 2)
+    // sp + 14: r3 (syscall arg 3)
+    // sp + 18: r12
+    // sp + 1C: lr
+    // sp + 20: return address (instruction following the svc)
+    // sp + 24: xPSR
 
     // Return from the function
     pop {{r4, pc}}
