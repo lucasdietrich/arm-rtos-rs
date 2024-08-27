@@ -25,6 +25,7 @@ pub struct Cs<D: CsDomain> {
 }
 
 impl<D: CsDomain> Cs<D> {
+    #[inline(always)]
     /* This is the only method to obtain a critical session object */
     pub unsafe fn new() -> Self {
         Cs {

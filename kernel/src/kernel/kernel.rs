@@ -1,7 +1,7 @@
 use core::arch::global_asm;
 
 use crate::cortex_m::{
-    critical_section::Cs,
+    critical_section::{Cs, GlobalIrq},
     interrupts::{atomic_restore, atomic_section},
 };
 
@@ -116,7 +116,7 @@ impl<const N: usize, const F: u32> Kernel<N, F> {
     }
 
     // TODO Any race condition on the ticks counter ?
-    pub fn increment_ticks(&mut self) {
+    pub fn increment_ticks(&mut self, _cs: &Cs<GlobalIrq>) {
         self.ticks += 1;
     }
 

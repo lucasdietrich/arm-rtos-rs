@@ -54,6 +54,7 @@ pub struct SCB {}
 impl SCB {
     pub const PTR: *const SCBRegs = 0xE000_ED00 as *const SCBRegs;
 
+    #[inline(always)]
     pub fn instance() -> Self {
         SCB {}
     }

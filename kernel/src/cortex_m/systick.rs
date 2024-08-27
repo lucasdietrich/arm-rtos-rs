@@ -29,6 +29,7 @@ const CLKSOURCE_POS: u32 = 2;
 impl<const FCPU: u32> SysTickDevice<FCPU> {
     pub const PTR: *const SysTick = SYSTICK as *const _;
 
+    #[inline(always)]
     pub fn instance() -> Self {
         SysTickDevice {}
     }

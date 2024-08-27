@@ -203,3 +203,19 @@ pub struct SCB {
     _marker: PhantomData<*const ()>,
 }
 ```
+
+### Force inlining
+
+Feel free to help the compiler to inline a function by using the `#[inline(always)]` attribute:
+
+```rs
+impl<D: CsDomain> Cs<D> {
+    #[inline(always)]
+    /* This is the only method to obtain a critical session object */
+    pub unsafe fn new() -> Self {
+        Cs {
+            domain: PhantomData,
+        }
+    }
+}
+```

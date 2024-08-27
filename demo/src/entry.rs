@@ -4,7 +4,7 @@ use cortex_m::register::control::Control;
 use kernel::{
     cortex_m::{
         cortex_m_rt::{k_call_pendsv, FCPU},
-        critical_section,
+        critical_section::{self, Cs, GlobalIrq},
         interrupts::atomic_section,
         irqn::SysIrqn,
         scb::SCB,
@@ -29,8 +29,13 @@ static mut KERNEL: Kernel<2, FST> = Kernel::init();
 
 #[no_mangle]
 pub extern "C" fn z_systick() {
-    // TODO Any race condition on the ticks counter ?
-    unsafe { KERNEL.increment_ticks() };
+    /* Systick interrupt is executed with the highest priority and cannot be preempted
+     * This is a *natural* critical section with the maximum degree
+     */
+    let cs = unsafe { Cs::<GlobalIrq>::new() };
+
+    /* Increment ticks */
+    unsafe { KERNEL.increment_ticks(&cs) };
 }
 
 #[no_mangle]
