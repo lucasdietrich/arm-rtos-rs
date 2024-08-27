@@ -3,8 +3,7 @@ use core::{arch::asm, ffi::c_void, fmt::Arguments, ptr};
 use super::syscalls::SyscallId;
 
 // Read A7.7.175 of DDI0403E_B_armv7m_arm.pdf
-// TODO how to read back svc value 0xbb
-// -> read pc-4
+// TODO how to read back svc value 0xbb -> read pc-4
 #[no_mangle]
 unsafe extern "C" fn z_call_svc_4(mut r0: u32, r1: u32, r2: u32, r3: u32, syscall_id: u32) -> i32 {
     // TODO change this value "#0xbb"

@@ -54,7 +54,7 @@ pub struct SCB {}
 impl SCB {
     pub const PTR: *const SCBRegs = 0xE000_ED00 as *const SCBRegs;
 
-    pub fn new() -> Self {
+    pub fn instance() -> Self {
         SCB {}
     }
 
@@ -63,12 +63,14 @@ impl SCB {
     }
 
     // Valid from SYSTICK(-1) to MEMORYMANAGEMENT(-12)
+    // prio can be between 0 and 7
     pub fn get_priority(&self, irqn: SysIrqn) -> u8 {
         let index = ((irqn as u32) & 0xf) - 4;
         (*self).shp[index as usize].read() >> (8 - NVIC::PRIO_BITS)
     }
 
     // Valid from SYSTICK(-1) to MEMORYMANAGEMENT(-12)
+    // prio can be between 0 and 7
     pub fn set_priority(&mut self, irqn: SysIrqn, prio: u8) {
         let index = ((irqn as u32) & 0xf) - 4;
         unsafe { (*self).shp[index as usize].write(prio << (8 - NVIC::PRIO_BITS)) }

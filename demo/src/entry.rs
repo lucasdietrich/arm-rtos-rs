@@ -3,7 +3,6 @@ use core::{ffi::c_void, fmt::Write, intrinsics, ptr::addr_of_mut};
 use cortex_m::register::control::Control;
 use kernel::{
     cortex_m::{
-        arm::SYSTICK,
         cortex_m_rt::{k_call_pendsv, FCPU},
         critical_section,
         interrupts::atomic_section,
@@ -52,11 +51,11 @@ pub extern "C" fn _start() {
     // Set UART0 as main uart
     stdio::set_uart(uart);
 
-    let mut systick = SysTickDevice::<FCPU, 0>::new(SYSTICK);
+    let mut systick = SysTickDevice::<FCPU>::instance();
     systick.configure::<FST>(true);
 
     // Show startup state    let cpuid = SCB::new().get_cpuid();
-    let mut scb = SCB::new();
+    let mut scb = SCB::instance();
     println!("CPUID base: {}", Hex::U32(scb.get_cpuid()));
 
     println!(

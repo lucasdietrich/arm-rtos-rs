@@ -51,8 +51,11 @@ impl Thread {
             pub exc: __basic_sf,           // Exception strack frame
         }
 
+        // TODO: Change this value to something not significant (e.g. 0x00000000)
         const UNDEFINED_MARKER: u32 = 0xAAAAAAAA;
+        // TODO: Change this value to something not significant (e.g. 0x00000000)
         const LR_DEFAULT: u32 = 0xFFFFFFFF;
+
         const XPSR: u32 = 0x01000000; // Thumb bit to 1
 
         let thread = Thread {

@@ -1,5 +1,3 @@
-use super::systick::SysTick;
-
 // Stack frame produced by an exception
 #[repr(C)]
 #[allow(non_camel_case_types)]
@@ -30,8 +28,3 @@ pub struct __callee_context {
     pub v8: u32,
     pub ip: u32,
 }
-
-pub const SCS_BASE: usize = 0xE000E000;
-
-pub const SYSTICK_BASE: usize = SCS_BASE + 0x0010;
-pub const SYSTICK: *mut SysTick = SYSTICK_BASE as *mut SysTick;

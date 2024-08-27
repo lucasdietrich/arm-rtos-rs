@@ -68,8 +68,14 @@ impl NVIC {
 
     pub const PTR: *const NVICRegs = 0xE000_E100 as *const NVICRegs;
 
+    pub fn instance() -> Self {
+        NVIC {}
+    }
+
     /* Reference implementation: __NVIC_GetPriority
      * https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/Core/Include/core_cm3.h#L1694
+     *
+     * prio can be between 0 and 7
      */
     pub fn get_priority(&mut self, irqn: u16) -> u8 {
         let reg: &RW<u8> = &self.ipr[irqn as usize];
@@ -78,6 +84,8 @@ impl NVIC {
 
     /* Reference implementation: __NVIC_SetPriority
      * https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/Core/Include/core_cm3.h#L1672
+     *
+     * prio can be between 0 and 7
      */
     pub fn set_priority(&mut self, irqn: u16, prio: u8) {
         let reg: &RW<u8> = &self.ipr[irqn as usize];

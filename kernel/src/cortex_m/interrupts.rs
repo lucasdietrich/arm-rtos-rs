@@ -63,3 +63,17 @@ where
 
     ret
 }
+
+pub fn atomic_restore<F, R>(f: F) -> R
+where
+    F: FnOnce(&Cs<critical_section::GlobalIrq>) -> R,
+{
+    atomic_section::<false, _, _>(f)
+}
+
+pub fn atomic_forceon<F, R>(f: F) -> R
+where
+    F: FnOnce(&Cs<critical_section::GlobalIrq>) -> R,
+{
+    atomic_section::<true, _, _>(f)
+}

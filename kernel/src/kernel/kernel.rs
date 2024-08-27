@@ -1,6 +1,9 @@
 use core::arch::global_asm;
 
-use crate::cortex_m::critical_section::Cs;
+use crate::cortex_m::{
+    critical_section::Cs,
+    interrupts::{atomic_restore, atomic_section},
+};
 
 use super::threading::Thread;
 
@@ -119,7 +122,7 @@ impl<const N: usize, const F: u32> Kernel<N, F> {
 
     // TODO Any race condition on the ticks counter ?
     pub fn get_ticks(&self) -> u64 {
-        self.ticks
+        atomic_restore(|_cs| self.ticks)
     }
 
     pub fn busy_wait(&self, ms: u32) {

@@ -6,3 +6,5 @@ pub mod irqn;
 pub mod nvic;
 pub mod scb;
 pub mod systick;
+
+pub const SCS_BASE: usize = 0xE000E000;

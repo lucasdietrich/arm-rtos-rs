@@ -16,7 +16,7 @@ impl Sealed for GlobalIrq {}
 impl CsDomain for GlobalIrq {}
 
 // TODO How to make Cs<T> covariant over T ? (by implementing more marker traits ?)
-// So that having a Cs<Global> is enough an atomic section required Cs<Kernel>
+// So that having a Cs<Global> is enough for an atomic section requiring Cs<Kernel>
 
 /* Represent a critical section for a given domain D*/
 pub struct Cs<D: CsDomain> {
