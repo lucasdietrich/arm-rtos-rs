@@ -43,6 +43,7 @@ pub fn enable(_cs: Cs<GlobalIrq>) {
 }
 
 // Reference implementation: https://github.com/rust-embedded/cortex-m/blob/master/cortex-m/src/interrupt.rs
+// Pass a reference to the critical section so that the closure cannot leak it by returned it
 pub fn atomic_section<const FORCEON: bool, F, R>(f: F) -> R
 where
     F: FnOnce(&Cs<critical_section::GlobalIrq>) -> R,
@@ -50,7 +51,7 @@ where
     /* Get if interrupts are enabled */
     let primask = FORCEON || primask();
 
-    /* Disable interrupts and execute the close */
+    /* Disable interrupts and execute the closure */
     let cs = disable();
 
     let ret = f(&cs);

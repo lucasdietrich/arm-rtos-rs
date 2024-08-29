@@ -5,7 +5,7 @@ use kernel::{
     cortex_m::{
         cortex_m_rt::{k_call_pendsv, FCPU},
         critical_section::{self, Cs, GlobalIrq},
-        interrupts::atomic_section,
+        interrupts::{atomic_restore, atomic_section},
         irqn::SysIrqn,
         scb::SCB,
         systick::SysTickDevice,
@@ -114,7 +114,7 @@ pub extern "C" fn _start() {
 
             println!(
                 "[ticks: {}] \tcurrent thread ({}): {}",
-                unsafe { KERNEL.get_ticks() },
+                atomic_restore(|cs| unsafe { KERNEL.get_ticks(cs) }),
                 Hex::U32(unsafe { z_current } as u32),
                 unsafe { KERNEL.current() }
             );

@@ -2,7 +2,7 @@ use core::arch::global_asm;
 
 use crate::cortex_m::{
     critical_section::{Cs, GlobalIrq},
-    interrupts::{atomic_restore, atomic_section},
+    interrupts::{self, atomic_restore, atomic_section},
 };
 
 use super::threading::Thread;
@@ -119,12 +119,12 @@ impl<const N: usize, const F: u32> Kernel<N, F> {
         self.ticks += 1;
     }
 
-    pub fn get_ticks(&self) -> u64 {
-        atomic_restore(|_cs| self.ticks)
+    pub fn get_ticks(&self, _cs: &Cs<GlobalIrq>) -> u64 {
+        self.ticks
     }
 
     pub fn busy_wait(&self, ms: u32) {
-        let end = self.get_ticks().saturating_add(((ms * F) / 1000) as u64);
-        while self.get_ticks() < end {}
+        let end = atomic_restore(|cs| self.get_ticks(cs)).saturating_add(((ms * F) / 1000) as u64);
+        while atomic_restore(|cs| self.get_ticks(cs)) < end {}
     }
 }
