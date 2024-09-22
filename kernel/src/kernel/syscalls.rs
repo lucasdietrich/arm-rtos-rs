@@ -29,6 +29,11 @@ struct SVCCallParams {
     pub syscall_id: u32,
 }
 
+fn sys_sleep(duration: u32) -> i32 {
+    println!("Sleeping...");
+    Kerr::ENOSYS as i32
+}
+
 #[no_mangle]
 extern "C" fn do_syscall(params: *const SVCCallParams) -> i32 {
     let cs = unsafe { Cs::<Kernel>::new() };
@@ -37,10 +42,7 @@ extern "C" fn do_syscall(params: *const SVCCallParams) -> i32 {
 
     if let Some(syscall_id) = FromPrimitive::from_u32(params.syscall_id) {
         match syscall_id {
-            SyscallId::SLEEP => {
-                println!("Sleeping...");
-                Kerr::ENOSYS as i32
-            }
+            SyscallId::SLEEP => sys_sleep(params.r0),
             SyscallId::PRINT => {
                 let ptr = params.r0 as *const u8;
                 let len = params.r1 as usize;

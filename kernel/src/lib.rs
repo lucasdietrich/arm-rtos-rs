@@ -11,5 +11,4 @@ pub mod serial;
 pub mod serial_utils;
 pub mod soc;
 pub mod stdio;
-
-pub fn test() {}
+pub mod utils;

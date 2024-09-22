@@ -1,4 +1,4 @@
-use core::{ffi::c_void, fmt::Write, intrinsics, ptr::addr_of_mut};
+use core::{ffi::c_void, fmt::Write, intrinsics, mem::MaybeUninit, ptr::addr_of_mut};
 
 use cortex_m::register::control::Control;
 use kernel::{
@@ -13,7 +13,7 @@ use kernel::{
     kernel::{
         kernel::{z_current, z_next, Kernel},
         threading::{Stack, Thread},
-        userspace,
+        userspace::{self, k_svc_sleep},
     },
     serial::{SerialConfig, SerialTrait},
     serial_utils::Hex,
@@ -22,10 +22,12 @@ use kernel::{
 };
 use kernel::{print, println};
 
-const FST: u32 = 1_000; // Hz
+use crate::ref_cast_lifetime;
+
+const FreqSysTick: u32 = 1_000; // Hz
 
 // init kernel
-static mut KERNEL: Kernel<2, FST> = Kernel::init();
+static mut KERNEL: Kernel<FreqSysTick> = Kernel::init();
 
 #[no_mangle]
 pub extern "C" fn z_systick() {
@@ -38,14 +40,17 @@ pub extern "C" fn z_systick() {
     unsafe { KERNEL.increment_ticks(&cs) };
 }
 
+fn k_yield() {
+    unsafe {
+        z_current = KERNEL.current_ptr();
+        KERNEL.sched_next_thread();
+        z_next = KERNEL.current_ptr();
+        k_call_pendsv();
+    };
+}
+
 #[no_mangle]
 pub extern "C" fn _start() {
-    // Invoke kernel crate
-
-    atomic_section::<false, _, _>(|_cs| {});
-
-    kernel::test();
-
     // Initialize uart
     let mut uart = UartDevice::<FCPU>::new(UART0);
     let uart_config = SerialConfig::default();
@@ -57,7 +62,7 @@ pub extern "C" fn _start() {
     stdio::set_uart(uart);
 
     let mut systick = SysTickDevice::<FCPU>::instance();
-    systick.configure::<FST>(true);
+    systick.configure::<FreqSysTick>(true);
 
     // Show startup state    let cpuid = SCB::new().get_cpuid();
     let mut scb = SCB::instance();
@@ -89,33 +94,51 @@ pub extern "C" fn _start() {
 
     display_control_register();
 
+    // initialize task1
     #[link_section = ".noinit"]
-    static mut THREAD_STACK: [u8; 4096] = [0; 4096];
+    static mut THREAD_STACK1: [u8; 4096] = [0; 4096];
 
-    // initialize task
-    let stack = Stack::new(unsafe { &mut THREAD_STACK }).unwrap();
-    let task1 = Thread::init(&stack, mytask_entry, 0xbadebeaf as *mut c_void);
-    println!("task1: {}", task1);
-    match unsafe { KERNEL.register_thread(task1) } {
-        Ok(thread_ptr) => {
-            println!("Register thread: {}", Hex::U32(thread_ptr as u32));
+    let stack1 = Stack::new(unsafe { &mut THREAD_STACK1 }).unwrap();
+    let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void);
 
-            // set next thread
-            unsafe { z_next = thread_ptr };
-        }
-        Err(task) => println!("Failed to register task: {}", task),
-    }
+    let task1_ref = &task1;
+    let task1_static = unsafe { ref_cast_lifetime(task1_ref) };
+    unsafe { KERNEL.register_thread(task1_static) }
 
-    unsafe { z_current = KERNEL.get_current_ptr() };
+    // initialize task2
+    #[link_section = ".noinit"]
+    static mut THREAD_STACK2: [u8; 4096] = [0; 4096];
+
+    let stack2 = Stack::new(unsafe { &mut THREAD_STACK2 }).unwrap();
+    let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void);
+
+    let task2_ref = &task2;
+    let task2_static = unsafe { ref_cast_lifetime(task2_ref) };
+    unsafe { KERNEL.register_thread(task2_static) }
+
+    // initialize task3
+    #[link_section = ".noinit"]
+    static mut THREAD_STACK3: [u8; 4096] = [0; 4096];
+
+    let stack3 = Stack::new(unsafe { &mut THREAD_STACK3 }).unwrap();
+    let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void);
+
+    let task3_ref = &task3;
+    let task3_static = unsafe { ref_cast_lifetime(task3_ref) };
+    unsafe { KERNEL.register_thread(task3_static) }
+
+    // init kernel
+    unsafe { KERNEL.register_main_thread() }
+
+    unsafe { KERNEL.print_tasks() }
 
     loop {
         if let Some(byte) = stdio::read() {
             println!("recv: {}", Hex::U8(byte));
 
             println!(
-                "[ticks: {}] \tcurrent thread ({}): {}",
+                "[ticks: {}]: cur {}",
                 atomic_restore(|cs| unsafe { KERNEL.get_ticks(cs) }),
-                Hex::U32(unsafe { z_current } as u32),
                 unsafe { KERNEL.current() }
             );
 
@@ -123,14 +146,10 @@ pub extern "C" fn _start() {
 
             match byte {
                 b'b' => unsafe { KERNEL.busy_wait(1000) },
-                b'p' => unsafe {
+                b'p' => {
                     println!("PendSV !");
-                    k_call_pendsv();
-
-                    let temp = z_current;
-                    z_current = z_next;
-                    z_next = temp;
-                },
+                    k_yield();
+                }
                 b'y' => {
                     println!("SVC yield");
                     syscall_ret = userspace::k_svc_yield();
@@ -165,20 +184,24 @@ extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
 
     loop {
         println!(
-            "MyTask arg: arg: {}, counter: {}",
+            "MyTask arg: {}, counter: {}",
             Hex::U32(arg as u32),
             Hex::U32(counter)
         );
 
-        unsafe {
-            let temp = z_current;
-            z_current = z_next;
-            z_next = temp;
-        }
-
-        unsafe { k_call_pendsv() };
+        k_yield();
 
         counter = counter.wrapping_add(1);
+    }
+}
+
+extern "C" fn mytask_entry3(arg: *mut c_void) -> ! {
+    loop {
+        println!("MyTask arg: {}, sleep", Hex::U32(arg as u32),);
+
+        k_svc_sleep(1000);
+
+        k_yield();
     }
 }
 

@@ -1,6 +1,9 @@
 use core::{ffi::c_void, fmt::Display, ptr::null_mut};
 
-use crate::cortex_m::arm::{__basic_sf, __callee_context};
+use crate::{
+    cortex_m::arm::{__basic_sf, __callee_context},
+    list::{self, Node},
+};
 
 // This function can be naked as it will never return !
 type ThreadEntry = extern "C" fn(*mut c_void) -> !;
@@ -28,14 +31,23 @@ impl Stack {
 }
 
 #[repr(C)]
-pub struct Thread {
+pub struct Thread<'a> {
     pub stack_ptr: *mut u32,
+
+    next: list::Link<'a, Thread<'a>>,
 }
 
-impl Thread {
+impl<'a> Node<'a, Thread<'a>> for Thread<'a> {
+    fn next(&'a self) -> &'a list::Link<'a, Thread<'a>> {
+        &self.next
+    }
+}
+
+impl<'a> Thread<'a> {
     pub const fn uninit() -> Self {
         Thread {
             stack_ptr: null_mut(),
+            next: list::Link::empty(),
         }
     }
 
@@ -60,6 +72,7 @@ impl Thread {
 
         let thread = Thread {
             stack_ptr: unsafe { stack.stack_end.sub(size_of::<InitStackFrame>() >> 2) },
+            next: list::Link::empty(),
         };
         let sf = thread.stack_ptr as *mut InitStackFrame;
 
@@ -93,7 +106,7 @@ impl Thread {
     }
 }
 
-impl Display for Thread {
+impl<'a> Display for Thread<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Thread sp=0x{:08x}", self.stack_ptr as u32)
     }
