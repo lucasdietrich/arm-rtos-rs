@@ -1,4 +1,4 @@
-use core::{ffi::c_void, fmt::Display, ptr::null_mut};
+use core::{cell::Cell, ffi::c_void, fmt::Display, ptr::null_mut};
 
 use crate::{
     cortex_m::arm::{__basic_sf, __callee_context},
@@ -34,6 +34,9 @@ impl Stack {
 pub struct Thread<'a> {
     pub stack_ptr: *mut u32,
 
+    // TODO: Review the use of the Cell here...
+    pub context: Cell<__callee_context>,
+
     next: list::Link<'a, Thread<'a>>,
 }
 
@@ -48,6 +51,7 @@ impl<'a> Thread<'a> {
         Thread {
             stack_ptr: null_mut(),
             next: list::Link::empty(),
+            context: Cell::new(__callee_context::zeroes()),
         }
     }
 
@@ -59,8 +63,7 @@ impl<'a> Thread<'a> {
         #[repr(C)]
         #[allow(non_camel_case_types)]
         struct InitStackFrame {
-            pub context: __callee_context, // Thread switch context
-            pub exc: __basic_sf,           // Exception strack frame
+            pub exc: __basic_sf, // Exception strack frame
         }
 
         // TODO: Change this value to something not significant (e.g. 0x00000000)
@@ -73,22 +76,9 @@ impl<'a> Thread<'a> {
         let thread = Thread {
             stack_ptr: unsafe { stack.stack_end.sub(size_of::<InitStackFrame>() >> 2) },
             next: list::Link::empty(),
+            context: Cell::new(__callee_context::default()),
         };
         let sf = thread.stack_ptr as *mut InitStackFrame;
-
-        // Create dummy context stack frame
-        unsafe {
-            (*sf).context.v1 = 0;
-            (*sf).context.v2 = 0;
-            (*sf).context.v3 = 0;
-            (*sf).context.v4 = 0;
-            (*sf).context.v5 = 0;
-            (*sf).context.v6 = 0;
-            (*sf).context.v7 = 0;
-            (*sf).context.v8 = 0;
-            (*sf).context.ip = 0;
-        };
-        // TODO: Any problem with 8B-unaligned SP ?
 
         // Create exception stack frame
         unsafe {

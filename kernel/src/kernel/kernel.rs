@@ -1,11 +1,18 @@
-use core::arch::global_asm;
+use core::{
+    arch::{asm, global_asm},
+    ffi::c_void,
+    u64,
+};
 
 use crate::{
     cortex_m::{
+        arm::__callee_context,
+        cortex_m_rt::k_call_pendsv,
         critical_section::{Cs, GlobalIrq},
         interrupts::{self, atomic_restore, atomic_section},
     },
     list, println,
+    serial_utils::Hex,
 };
 
 use super::threading::Thread;
@@ -24,6 +31,36 @@ pub static mut z_current: *mut Thread = core::ptr::null_mut();
 #[no_mangle]
 pub static mut z_next: *mut Thread = core::ptr::null_mut();
 
+// global_asm!(
+//     "
+//     .section .text, \"ax\"
+//     .global z_svc
+//     .thumb_func
+// z_svc:
+//     // SVC manages final changes to switch to the user process
+
+//     // 1. Switch to unpriviledged mode
+//     mov r0, #1
+//     msr CONTROL, r0
+
+//     // 2. sync barrier required after CONTROL, from armv7 manual:
+//     // 'Software must use an ISB barrier instruction to ensure
+//     //  a write to the CONTROL register takes effect before the
+//     //  next instruction is executed.'
+//     isb
+
+//     // 3. load EXC_RETURN value to return in process stack
+//     ldr lr, =0xFFFFFFFD
+
+//     // 4. switch to user
+//     bx lr
+//     "
+// );
+
+// extern "C" {
+//     pub fn z_svc();
+// }
+
 // 1. Calls to pendsv saves:
 //  r0-r3, r12, lr, return addr, xpsr
 global_asm!(
@@ -32,32 +69,82 @@ global_asm!(
     .global z_pendsv
     .thumb_func
 z_pendsv:
-    // retrieve address of current thread and save it in r0
-    ldr r2, =z_current
-    ldr r0, [r2]
-    ldr r3, =z_next // use z_kernel offsets
-    ldr r1, [r3]
+    // PendSV manages final changes to switch to the user process
 
-_thread_switch:
-    // save 'from' thread context
-    push {{v1-v8, ip}}
+    // 1. Switch to unpriviledged mode
+    mov r0, #1
+    msr CONTROL, r0
 
-    // save sp to 'from' thread
-    str sp, [r0]
+    // 2. sync barrier required after CONTROL, from armv7 manual:
+    // 'Software must use an ISB barrier instruction to ensure 
+    //  a write to the CONTROL register takes effect before the 
+    //  next instruction is executed.'
+    isb
 
-    // load sp from 'from' thread
-    ldr sp, [r1]
+    // 3. load EXC_RETURN value to return in process stack
+    ldr lr, =0xFFFFFFFD
 
-    // restore 'to' thread context
-    pop {{v1-v8, ip}}
-
-    // load KERNEL structure into r0
+    // 4. switch to user
     bx lr
     "
 );
 
 extern "C" {
     pub fn z_pendsv();
+}
+
+#[export_name = "switch_to_user"]
+fn switch_to_user(mut stack_ptr: *mut u32, process_regs: *mut __callee_context) -> *mut u32 {
+    unsafe {
+        asm!(
+            "
+            // 1. Save kernel call-saved registers on the stack
+            push {{v1-v8, ip}}
+
+            // 2. Set user stack pointer
+            msr psp, r0
+
+            // 3. Restore user process context
+            ldmia r1, {{r4, r11}}
+
+            // 4. trigger a pendSV: set PENDSVSET bit (28) in ICSR register (0xE000ED04)
+            // 4.a)
+            // ldr r1, =0xE000ED04
+            // ldr r0, [r1, #0]
+            // ldr r2, =0x10000000
+            // orr r0, r0, r2
+            // str r0, [r1, #0]
+            // isb
+            
+            // 4.b)
+            ldr r0, =0xE000ED04   // Load ICSR address
+            ldr r1, =0x10000000   // Load PENDSVSET bit value
+            str r1, [r0]          // Trigger PendSV by writing to ICSR
+            
+            isb
+
+            // 4.c)
+            // svc 0xFF
+
+            // =============================================================
+            // PendSV triggered; now we have returned from the exception 
+            // after a SVC called by the user process
+            // =============================================================
+            
+            // 5. Save user process context
+            stmia r1, {{r4, r11}}
+
+            // 4. Pop kernel call-saved registers from the stack
+            ldmia sp, {{v1-v8, ip}}
+    
+        ",
+            inout("r0") stack_ptr,
+            in("r1") process_regs,
+            options(nostack, nomem)
+        )
+    }
+
+    stack_ptr
 }
 
 // N: Maximum number of threads supported
@@ -72,10 +159,8 @@ pub struct Kernel<'a, const F: u32 = 1> {
     ticks: u64,
 }
 
-static mut MAIN_THREAD: Thread<'static> = Thread::uninit();
-
-impl<const F: u32> Kernel<'static, F> {
-    pub const fn init() -> Kernel<'static, F> {
+impl<'a, const F: u32> Kernel<'a, F> {
+    pub const fn init() -> Kernel<'a, F> {
         Kernel {
             tasks: list::List::empty(),
             count: 0, // main thread
@@ -84,12 +169,7 @@ impl<const F: u32> Kernel<'static, F> {
         }
     }
 
-    pub fn register_main_thread(&mut self) {
-        let main_thread = unsafe { &MAIN_THREAD };
-        self.register_thread(main_thread);
-    }
-
-    pub fn register_thread(&mut self, thread: &'static Thread<'static>) {
+    pub fn register_thread(&mut self, thread: &'a Thread<'a>) {
         self.tasks.push_front(&thread);
         self.count += 1;
     }
@@ -101,7 +181,7 @@ impl<const F: u32> Kernel<'static, F> {
         }
     }
 
-    pub fn current(&self) -> &'static Thread {
+    pub fn current(&self) -> &'a Thread {
         for (index, task) in self.tasks.iter().enumerate() {
             if self.current == index {
                 return task;
@@ -110,7 +190,7 @@ impl<const F: u32> Kernel<'static, F> {
         panic!("Invalid current index");
     }
 
-    pub fn current_ptr(&'static self) -> *mut Thread {
+    pub fn current_ptr(&'a self) -> *mut Thread {
         let current = self.current();
         current as *const Thread as *mut Thread
     }
@@ -133,5 +213,17 @@ impl<const F: u32> Kernel<'static, F> {
 
     pub fn sched_next_thread(&mut self) {
         self.current = (self.current + 1) % self.count;
+    }
+    pub fn kernel_loop(&'a mut self) {
+        let task = self.current();
+
+        let process_sp = task.stack_ptr;
+        println!("PSP: 0x{}", Hex::U32(process_sp as u32));
+
+        let process_context = task.context.as_ptr();
+
+        switch_to_user(process_sp, process_context);
+
+        println!("Returned from switch_to_user");
     }
 }

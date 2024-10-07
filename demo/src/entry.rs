@@ -4,6 +4,7 @@ use cortex_m::register::control::Control;
 use kernel::{
     cortex_m::{
         cortex_m_rt::{k_call_pendsv, FCPU},
+        cpu::Cpu,
         critical_section::{self, Cs, GlobalIrq},
         interrupts::{atomic_restore, atomic_section},
         irqn::SysIrqn,
@@ -13,7 +14,7 @@ use kernel::{
     kernel::{
         kernel::{z_current, z_next, Kernel},
         threading::{Stack, Thread},
-        userspace::{self, k_svc_sleep},
+        userspace::{self, k_svc_sleep, k_svc_yield},
     },
     serial::{SerialConfig, SerialTrait},
     serial_utils::Hex,
@@ -26,9 +27,6 @@ use crate::ref_cast_lifetime;
 
 const FreqSysTick: u32 = 1_000; // Hz
 
-// init kernel
-static mut KERNEL: Kernel<FreqSysTick> = Kernel::init();
-
 #[no_mangle]
 pub extern "C" fn z_systick() {
     /* Systick interrupt is executed with the highest priority and cannot be preempted
@@ -36,16 +34,17 @@ pub extern "C" fn z_systick() {
      */
     let cs = unsafe { Cs::<GlobalIrq>::new() };
 
-    /* Increment ticks */
-    unsafe { KERNEL.increment_ticks(&cs) };
+    // /* Increment ticks */
+    // unsafe { KERNEL.increment_ticks(&cs) };
 }
 
 fn k_yield() {
     unsafe {
-        z_current = KERNEL.current_ptr();
-        KERNEL.sched_next_thread();
-        z_next = KERNEL.current_ptr();
+        // z_current = KERNEL.current_ptr();
+        // KERNEL.sched_next_thread();
+        // z_next = KERNEL.current_ptr();
         k_call_pendsv();
+        // k_svc_yield();
     };
 }
 
@@ -56,13 +55,12 @@ pub extern "C" fn _start() {
     let uart_config = SerialConfig::default();
     uart.init(&uart_config);
     let _ = uart.write_str("arm rust RTOS demo starting\n");
-    let _ = uart.write_fmt(format_args!("Hello, world: {}\n", Hex::U16(2024)));
 
     // Set UART0 as main uart
     stdio::set_uart(uart);
 
-    let mut systick = SysTickDevice::<FCPU>::instance();
-    systick.configure::<FreqSysTick>(true);
+    // let mut systick = SysTickDevice::<FCPU>::instance();
+    // systick.configure::<FreqSysTick>(true);
 
     // Show startup state    let cpuid = SCB::new().get_cpuid();
     let mut scb = SCB::instance();
@@ -94,102 +92,107 @@ pub extern "C" fn _start() {
 
     display_control_register();
 
+    // Initialize kernel
+
+    // init kernel
+    let mut kernel = Kernel::<FreqSysTick>::init();
+
     // initialize task1
     #[link_section = ".noinit"]
-    static mut THREAD_STACK1: [u8; 4096] = [0; 4096];
+    static mut THREAD_STACK1: [u8; 32768] = [0; 32768];
 
     let stack1 = Stack::new(unsafe { &mut THREAD_STACK1 }).unwrap();
     let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void);
 
-    let task1_ref = &task1;
-    let task1_static = unsafe { ref_cast_lifetime(task1_ref) };
-    unsafe { KERNEL.register_thread(task1_static) }
+    kernel.register_thread(&task1);
 
-    // initialize task2
-    #[link_section = ".noinit"]
-    static mut THREAD_STACK2: [u8; 4096] = [0; 4096];
+    #[cfg(feature = "multiple_threads")]
+    {
+        // initialize task2
+        #[link_section = ".noinit"]
+        static mut THREAD_STACK2: [u8; 32768] = [0; 32768];
 
-    let stack2 = Stack::new(unsafe { &mut THREAD_STACK2 }).unwrap();
-    let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void);
+        let stack2 = Stack::new(unsafe { &mut THREAD_STACK2 }).unwrap();
+        let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void);
 
-    let task2_ref = &task2;
-    let task2_static = unsafe { ref_cast_lifetime(task2_ref) };
-    unsafe { KERNEL.register_thread(task2_static) }
+        kernel.register_thread(&task2);
 
-    // initialize task3
-    #[link_section = ".noinit"]
-    static mut THREAD_STACK3: [u8; 4096] = [0; 4096];
+        // initialize task3
+        #[link_section = ".noinit"]
+        static mut THREAD_STACK3: [u8; 32768] = [0; 32768];
 
-    let stack3 = Stack::new(unsafe { &mut THREAD_STACK3 }).unwrap();
-    let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void);
+        let stack3 = Stack::new(unsafe { &mut THREAD_STACK3 }).unwrap();
+        let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void);
 
-    let task3_ref = &task3;
-    let task3_static = unsafe { ref_cast_lifetime(task3_ref) };
-    unsafe { KERNEL.register_thread(task3_static) }
+        kernel.register_thread(&task3);
+    }
 
     // init kernel
-    unsafe { KERNEL.register_main_thread() }
+    kernel.print_tasks();
+    kernel.kernel_loop();
+    loop {}
 
-    unsafe { KERNEL.print_tasks() }
+    // loop {
+    //     if let Some(byte) = stdio::read() {
+    //         println!("recv: {}", Hex::U8(byte));
 
-    loop {
-        if let Some(byte) = stdio::read() {
-            println!("recv: {}", Hex::U8(byte));
+    //         println!(
+    //             "[ticks: {}]: cur {}",
+    //             atomic_restore(|cs| unsafe { KERNEL.get_ticks(cs) }),
+    //             unsafe { KERNEL.current() }
+    //         );
 
-            println!(
-                "[ticks: {}]: cur {}",
-                atomic_restore(|cs| unsafe { KERNEL.get_ticks(cs) }),
-                unsafe { KERNEL.current() }
-            );
+    //         let mut syscall_ret = 0;
 
-            let mut syscall_ret = 0;
+    //         match byte {
+    //             b'b' => unsafe { KERNEL.busy_wait(1000) },
+    //             b'p' => {
+    //                 println!("PendSV !");
+    //                 k_yield();
+    //             }
+    //             b'y' => {
+    //                 println!("SVC yield");
+    //                 syscall_ret = userspace::k_svc_yield();
+    //             }
+    //             b's' => {
+    //                 println!("SVC sleep");
+    //                 syscall_ret = userspace::k_svc_sleep(1000);
+    //             }
+    //             b'v' => {
+    //                 println!("SVC debug");
+    //                 syscall_ret = userspace::k_svc_yield();
+    //             }
+    //             b'w' => {
+    //                 println!("SVC print");
+    //                 let msg = "Hello using SVC !!\n";
+    //                 syscall_ret = userspace::k_svc_print(msg);
+    //             }
+    //             b'a' => {
+    //                 println!("aborting...");
+    //                 intrinsics::abort();
+    //             }
+    //             _ => {}
+    //         }
 
-            match byte {
-                b'b' => unsafe { KERNEL.busy_wait(1000) },
-                b'p' => {
-                    println!("PendSV !");
-                    k_yield();
-                }
-                b'y' => {
-                    println!("SVC yield");
-                    syscall_ret = userspace::k_svc_yield();
-                }
-                b's' => {
-                    println!("SVC sleep");
-                    syscall_ret = userspace::k_svc_sleep(1000);
-                }
-                b'v' => {
-                    println!("SVC debug");
-                    syscall_ret = userspace::k_svc_yield();
-                }
-                b'w' => {
-                    println!("SVC print");
-                    let msg = "Hello using SVC !!\n";
-                    syscall_ret = userspace::k_svc_print(msg);
-                }
-                b'a' => {
-                    println!("aborting...");
-                    intrinsics::abort();
-                }
-                _ => {}
-            }
-
-            println!("syscall_ret: {}", Hex::U32(syscall_ret as u32));
-        }
-    }
+    //         println!("syscall_ret: {}", Hex::U32(syscall_ret as u32));
+    //     }
+    // }
 }
 
 extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
+    let regs = Cpu::registers();
+    Cpu::print_registers(&regs);
+
     let mut counter: u32 = 0;
 
-    loop {
-        println!(
-            "MyTask arg: {}, counter: {}",
-            Hex::U32(arg as u32),
-            Hex::U32(counter)
-        );
+    println!(
+        "MyTask arg: {}, counter: {}",
+        Hex::U32(arg as u32),
+        Hex::U32(counter)
+    );
 
-        k_yield();
+    loop {
+        // // k_yield();
 
         counter = counter.wrapping_add(1);
     }
@@ -219,8 +222,10 @@ fn display_control_register() {
     } else {
         print!(", PSP")
     };
-    if control_register.fpca().is_active() {
-        let _ = print!(", FPU");
-    }
+    let _ = if control_register.fpca().is_active() {
+        print!(", FPU")
+    } else {
+        print!(", no FPU")
+    };
     let _ = println!();
 }

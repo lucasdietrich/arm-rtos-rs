@@ -3,7 +3,10 @@ use core::{
     ptr::{self, addr_of, addr_of_mut},
 };
 
-use crate::kernel::{kernel::z_pendsv, syscalls::z_svc};
+use crate::{
+    kernel::{kernel::z_pendsv, syscalls::z_svc},
+    println,
+};
 
 // TODO move to mps2_an385
 pub const FCPU: u32 = 25_000_000;
@@ -136,6 +139,13 @@ pub unsafe extern "C" fn k_call_pendsv() {
     // This code is equivalent to
     // unsafe { p.SCB.icsr.modify(|r| r | 1 << 28) }; // SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 
+    // TODO This can probably be simplified to a write only, and not modify,
+    // as writing 0 to all bits in ICSR has no effect.
+    // So following assembly instructions must be enough to trigger the pendsv:
+    //
+    // ldr r0, =0xE000ED04   ; Load ICSR address
+    // ldr r1, =0x10000000   ; Load PENDSVSET bit value
+    // str r1, [r0]          ; Trigger PendSV by writing to ICSR
     const ICSR: *mut u32 = 0xE000_ED04 as *mut u32;
     const PENDSVSET_BIT: u32 = 1 << 28;
     reg_modify(ICSR, PENDSVSET_BIT, PENDSVSET_BIT);

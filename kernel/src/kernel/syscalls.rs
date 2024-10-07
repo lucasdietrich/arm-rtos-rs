@@ -107,8 +107,8 @@ z_svc:
     // Clean up the stack
     add sp, sp, #20         // Deallocate the 20 bytes of stack space
 
-    // Replace value of r0 in the exception stack frame, so that when the 
-    // exception returns. The return value of the syscall is automatically 
+    // Replace value of r0 in the exception stack frame, so that when the
+    // exception returns. The return value of the syscall is automatically
     // set in r0
     str r0, [sp, #8]
 

@@ -31,6 +31,18 @@ arm-none-eabi-readelf -x .bss $ELF > $ELF.bss.txt
 arm-none-eabi-readelf -x .data $ELF > $ELF.data.txt
 arm-none-eabi-readelf -x .noinit $ELF > $ELF.noinit.txt
 
+echo "disassemble files:"
+echo "  ${ELF}_src.s"
+echo "  $ELF.s"
+echo "  ${ELF}_sections.s"
+echo "  ${ELF}_readelf.txt"
+echo "  $ELF.isr_vector.txt"
+echo "  $ELF.text.txt"
+echo "  ${ELF}_size.txt"
+echo "  $ELF.bss.txt"
+echo "  $ELF.data.txt"
+echo "  $ELF.noinit.txt"
+
 # calculate the diff between the old and new files
 mkdir -p ${DIFF}
 diff ${OLD}/${NAME}_src.s ${ELF}_src.s > ${DIFF}/${NAME}_src.diff

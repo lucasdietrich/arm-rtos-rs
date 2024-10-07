@@ -49,6 +49,7 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
         - [x] system stack
         - [ ] irq stack
         - [ ] user stack
+    - [ ] MSP/PSP
     - [x] thread switch (without FPU support)
     - [x] cooperative scheduling
     - [ ] preemptive scheduling
@@ -92,7 +93,15 @@ static mut BAZ: u32 = 42; // Static mutable
 
 ### Export symbols
 
+Disable name mangling for a function:
+
 ```rs
+
+#[export_name = "switch_to_user"]
+fn switch_to_user() {
+    // ...
+}
+
 #[export_name = "my_symbol"]
 extern "C" fn my_function() {
     // ...
