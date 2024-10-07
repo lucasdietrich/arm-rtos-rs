@@ -3,10 +3,15 @@ use core::{
     ptr::{self, addr_of, addr_of_mut},
 };
 
-use crate::{
-    kernel::{kernel::z_pendsv, syscalls::z_svc},
-    println,
-};
+use crate::println;
+
+extern "C" {
+    pub fn z_svc();
+}
+
+extern "C" {
+    pub fn z_pendsv();
+}
 
 // TODO move to mps2_an385
 pub const FCPU: u32 = 25_000_000;

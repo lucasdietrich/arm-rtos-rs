@@ -5,7 +5,7 @@ use core::{
 
 use super::critical_section::{self, Cs, GlobalIrq};
 
-pub fn primask() -> bool {
+pub fn enabled() -> bool {
     let primask: u32;
 
     // Read section B5.2.3 of ARM v7-M Architecture Reference Manual
@@ -49,7 +49,7 @@ where
     F: FnOnce(&Cs<critical_section::GlobalIrq>) -> R,
 {
     /* Get if interrupts are enabled */
-    let primask = FORCEON || primask();
+    let primask = FORCEON || enabled();
 
     /* Disable interrupts and execute the closure */
     let cs = disable();

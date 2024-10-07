@@ -65,70 +65,70 @@ extern "C" fn do_syscall(params: *const SVCCallParams) -> i32 {
     }
 }
 
-global_asm!(
-    "
-    .section .text, \"ax\"
-    .global z_svc
-    .global do_syscall
-    .thumb_func
-z_svc:
-    // At this point, the exception frame looks like this
-    // sp + 00: r0 (syscall arg 0)
-    // sp + 04: r1 (syscall arg 1)
-    // sp + 08: r2 (syscall arg 2)
-    // sp + 0C: r3 (syscall arg 3)
-    // sp + 10: r12
-    // sp + 14: lr
-    // sp + 18: return address (instruction following the svc)
-    // sp + 1C: xPSR
+// global_asm!(
+//     "
+//     .section .text, \"ax\"
+//     .global z_svc
+//     .global do_syscall
+//     .thumb_func
+// z_svc:
+//     // At this point, the exception frame looks like this
+//     // sp + 00: r0 (syscall arg 0)
+//     // sp + 04: r1 (syscall arg 1)
+//     // sp + 08: r2 (syscall arg 2)
+//     // sp + 0C: r3 (syscall arg 3)
+//     // sp + 10: r12
+//     // sp + 14: lr
+//     // sp + 18: return address (instruction following the svc)
+//     // sp + 1C: xPSR
 
-    push {{r4, lr}}
+//     push {{r4, lr}}
 
-    // Allocate space on the stack for SVCCallParams
-    sub sp, sp, #20         // Allocate 20 bytes (5 * 4 bytes for r0, r1, r2, r3, syscall_id)
+//     // Allocate space on the stack for SVCCallParams
+//     sub sp, sp, #20         // Allocate 20 bytes (5 * 4 bytes for r0, r1, r2, r3, syscall_id)
 
-    // Store r0-r3 in the allocated stack space
-    str r0, [sp, #0]        // params.r0 = r0
-    str r1, [sp, #4]        // params.r1 = r1
-    str r2, [sp, #8]        // params.r2 = r2
-    str r3, [sp, #12]       // params.r3 = r3
+//     // Store r0-r3 in the allocated stack space
+//     str r0, [sp, #0]        // params.r0 = r0
+//     str r1, [sp, #4]        // params.r1 = r1
+//     str r2, [sp, #8]        // params.r2 = r2
+//     str r3, [sp, #12]       // params.r3 = r3
 
-    // Store r4 (syscall ID) in the allocated stack space
-    str r4, [sp, #16]       // params.syscall_id = r4
+//     // Store r4 (syscall ID) in the allocated stack space
+//     str r4, [sp, #16]       // params.syscall_id = r4
 
-    // Pass the pointer to params (sp) as an argument to do_syscall
-    mov r0, sp              // r0 = params (stack pointer)
+//     // Pass the pointer to params (sp) as an argument to do_syscall
+//     mov r0, sp              // r0 = params (stack pointer)
 
-    // Call do_syscall function
-    bl do_syscall
+//     // Call do_syscall function
+//     bl do_syscall
 
-    // r0 contains do_syscall returned value
+//     // r0 contains do_syscall returned value
 
-    // Clean up the stack
-    add sp, sp, #20         // Deallocate the 20 bytes of stack space
+//     // Clean up the stack
+//     add sp, sp, #20         // Deallocate the 20 bytes of stack space
 
-    // Replace value of r0 in the exception stack frame, so that when the
-    // exception returns. The return value of the syscall is automatically
-    // set in r0
-    str r0, [sp, #8]
+//     // Replace value of r0 in the exception stack frame, so that when the
+//     // exception returns. The return value of the syscall is automatically
+//     // set in r0
+//     str r0, [sp, #8]
 
-    // At this point, the exception frame looks like this
-    // sp + 00: next pc (old lr)
-    // sp + 04: next r4 (old r4)
-    // sp + 08: SYSCALL RETURN VALUE (old r0)
-    // sp + 0C: r1 (syscall arg 1)
-    // sp + 10: r2 (syscall arg 2)
-    // sp + 14: r3 (syscall arg 3)
-    // sp + 18: r12
-    // sp + 1C: lr
-    // sp + 20: return address (instruction following the svc)
-    // sp + 24: xPSR
+//     // At this point, the exception frame looks like this
+//     // sp + 00: next pc (old lr)
+//     // sp + 04: next r4 (old r4)
+//     // sp + 08: SYSCALL RETURN VALUE (old r0)
+//     // sp + 0C: r1 (syscall arg 1)
+//     // sp + 10: r2 (syscall arg 2)
+//     // sp + 14: r3 (syscall arg 3)
+//     // sp + 18: r12
+//     // sp + 1C: lr
+//     // sp + 20: return address (instruction following the svc)
+//     // sp + 24: xPSR
 
-    // Return from the function
-    pop {{r4, pc}}
-    "
-);
+//     // Return from the function
+//     pop {{r4, pc}}
+//     "
+// );
 
-extern "C" {
-    pub fn z_svc();
-}
+// extern "C" {
+//     pub fn z_svc();
+// }

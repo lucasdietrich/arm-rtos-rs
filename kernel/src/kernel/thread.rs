@@ -12,7 +12,7 @@ type ThreadEntry = extern "C" fn(*mut c_void) -> !;
 
 #[repr(C)]
 pub struct Thread<'a> {
-    pub stack_ptr: *mut u32,
+    pub stack_ptr: Cell<*mut u32>,
 
     // TODO: Review the use of the Cell here...
     pub context: Cell<__callee_context>,
@@ -29,14 +29,14 @@ impl<'a> Node<'a, Thread<'a>> for Thread<'a> {
 impl<'a> Thread<'a> {
     pub const fn uninit() -> Self {
         Thread {
-            stack_ptr: null_mut(),
+            stack_ptr: Cell::new(null_mut()),
             next: list::Link::empty(),
             context: Cell::new(__callee_context::zeroes()),
         }
     }
 
     pub fn is_initialized(&self) -> bool {
-        !self.stack_ptr.is_null()
+        !self.stack_ptr.get().is_null()
     }
 
     pub fn init(stack: &Stack, entry: ThreadEntry, arg1: *mut c_void) -> Self {
@@ -54,11 +54,11 @@ impl<'a> Thread<'a> {
         const XPSR: u32 = 0x01000000; // Thumb bit to 1
 
         let thread = Thread {
-            stack_ptr: unsafe { stack.stack_end.sub(size_of::<InitStackFrame>() >> 2) },
+            stack_ptr: Cell::new(unsafe { stack.stack_end.sub(size_of::<InitStackFrame>() >> 2) }),
             next: list::Link::empty(),
             context: Cell::new(__callee_context::default()),
         };
-        let sf = thread.stack_ptr as *mut InitStackFrame;
+        let sf = thread.stack_ptr.get() as *mut InitStackFrame;
 
         // Create exception stack frame
         unsafe {
@@ -78,6 +78,6 @@ impl<'a> Thread<'a> {
 
 impl<'a> Display for Thread<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Thread sp=0x{:08x}", self.stack_ptr as u32)
+        write!(f, "Thread sp=0x{:08x}", self.stack_ptr.get() as u32)
     }
 }

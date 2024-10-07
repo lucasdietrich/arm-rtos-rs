@@ -1,3 +1,5 @@
+// TODO: Change implementation to ensure 8B align at compile-time
+
 pub struct Stack {
     pub stack_end: *mut u32,
     pub stack_size: usize,

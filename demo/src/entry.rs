@@ -1,12 +1,12 @@
-use core::{ffi::c_void, fmt::Write, intrinsics, mem::MaybeUninit, ptr::addr_of_mut};
+use core::{arch::asm, ffi::c_void, fmt::Write, intrinsics, mem::MaybeUninit, ptr::addr_of_mut};
 
-use cortex_m::register::control::Control;
+use cortex_m::{interrupt, register::control::Control};
 use kernel::{
     cortex_m::{
         cortex_m_rt::{k_call_pendsv, FCPU},
         cpu::Cpu,
         critical_section::{self, Cs, GlobalIrq},
-        interrupts::{atomic_restore, atomic_section},
+        interrupts::{self, atomic_restore, atomic_section, enabled},
         irqn::SysIrqn,
         scb::SCB,
         systick::SysTickDevice,
@@ -44,7 +44,7 @@ fn k_yield() {
         // z_current = KERNEL.current_ptr();
         // KERNEL.sched_next_thread();
         // z_next = KERNEL.current_ptr();
-        k_call_pendsv();
+        // k_call_pendsv();
         // k_svc_yield();
     };
 }
@@ -60,12 +60,15 @@ pub extern "C" fn _start() {
     // Set UART0 as main uart
     stdio::set_uart(uart);
 
-    // let mut systick = SysTickDevice::<FCPU>::instance();
-    // systick.configure::<FreqSysTick>(true);
+    let mut systick = SysTickDevice::<FCPU>::instance();
+    systick.configure::<FreqSysTick>(true);
 
     // Show startup state    let cpuid = SCB::new().get_cpuid();
     let mut scb = SCB::instance();
     println!("CPUID base: {}", Hex::U32(scb.get_cpuid()));
+
+    let primask = interrupts::enabled();
+    println!("interrupts enabled: {}", primask);
 
     println!(
         "Systick prio: {}",
@@ -129,9 +132,10 @@ pub extern "C" fn _start() {
     }
 
     // init kernel
-    kernel.print_tasks();
-    kernel.kernel_loop();
-    loop {}
+    loop {
+        kernel.print_tasks();
+        kernel.kernel_loop();
+    }
 
     // loop {
     //     if let Some(byte) = stdio::read() {
@@ -181,21 +185,20 @@ pub extern "C" fn _start() {
 }
 
 extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
+    println!("MyTask arg: {}", Hex::U32(arg as u32),);
+
+    display_control_register();
+
     let regs = Cpu::registers();
     Cpu::print_registers(&regs);
 
     let mut counter: u32 = 0;
 
-    println!(
-        "MyTask arg: {}, counter: {}",
-        Hex::U32(arg as u32),
-        Hex::U32(counter)
-    );
-
     loop {
-        // k_yield();
-
+        println!("[{}] counter: {}", Hex::U32(arg as u32), Hex::U32(counter));
         counter = counter.wrapping_add(1);
+
+        k_svc_yield();
     }
 }
 
