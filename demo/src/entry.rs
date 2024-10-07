@@ -13,7 +13,8 @@ use kernel::{
     },
     kernel::{
         kernel::{z_current, z_next, Kernel},
-        threading::{Stack, Thread},
+        stack::Stack,
+        thread::Thread,
         userspace::{self, k_svc_sleep, k_svc_yield},
     },
     serial::{SerialConfig, SerialTrait},
@@ -192,7 +193,7 @@ extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
     );
 
     loop {
-        // // k_yield();
+        // k_yield();
 
         counter = counter.wrapping_add(1);
     }

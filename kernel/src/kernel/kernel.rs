@@ -15,7 +15,7 @@ use crate::{
     serial_utils::Hex,
 };
 
-use super::threading::Thread;
+use super::thread::Thread;
 
 pub fn sleep(ms: u32) {}
 
