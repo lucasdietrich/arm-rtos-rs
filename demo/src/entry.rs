@@ -24,8 +24,6 @@ use kernel::{
 };
 use kernel::{print, println};
 
-use crate::ref_cast_lifetime;
-
 const FreqSysTick: u32 = 1_000; // Hz
 
 #[no_mangle]
@@ -100,26 +98,23 @@ pub extern "C" fn _start() {
 
     kernel.register_thread(&task1);
 
-    #[cfg(feature = "multiple_threads")]
-    {
-        // initialize task2
-        #[link_section = ".noinit"]
-        static mut THREAD_STACK2: [u8; 32768] = [0; 32768];
+    // initialize task2
+    #[link_section = ".noinit"]
+    static mut THREAD_STACK2: [u8; 32768] = [0; 32768];
 
-        let stack2 = Stack::new(unsafe { &mut THREAD_STACK2 }).unwrap();
-        let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void);
+    let stack2 = Stack::new(unsafe { &mut THREAD_STACK2 }).unwrap();
+    let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void);
 
-        kernel.register_thread(&task2);
+    kernel.register_thread(&task2);
 
-        // initialize task3
-        #[link_section = ".noinit"]
-        static mut THREAD_STACK3: [u8; 32768] = [0; 32768];
+    // initialize task3
+    #[link_section = ".noinit"]
+    static mut THREAD_STACK3: [u8; 32768] = [0; 32768];
 
-        let stack3 = Stack::new(unsafe { &mut THREAD_STACK3 }).unwrap();
-        let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void);
+    let stack3 = Stack::new(unsafe { &mut THREAD_STACK3 }).unwrap();
+    let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void);
 
-        kernel.register_thread(&task3);
-    }
+    kernel.register_thread(&task3);
 
     // init kernel
     loop {

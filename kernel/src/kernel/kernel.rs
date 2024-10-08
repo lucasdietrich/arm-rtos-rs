@@ -216,5 +216,7 @@ impl<'a, const F: u32> Kernel<'a, F> {
         task.stack_ptr.set(process_sp);
 
         println!("Returned from switch_to_user");
+
+        self.sched_next_thread();
     }
 }

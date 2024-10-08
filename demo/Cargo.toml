@@ -14,4 +14,3 @@ cortex-m = "0.7.7"
 
 [features]
 default = []
-multiple_threads = []
