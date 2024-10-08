@@ -3,16 +3,16 @@ use core::{arch::asm, ffi::c_void, fmt::Write, intrinsics, mem::MaybeUninit, ptr
 use cortex_m::{interrupt, register::control::Control};
 use kernel::{
     cortex_m::{
-        cortex_m_rt::{k_call_pendsv, FCPU},
+        cortex_m_rt::FCPU,
         cpu::Cpu,
-        critical_section::{self, Cs, GlobalIrq},
-        interrupts::{self, atomic_restore, atomic_section, enabled},
+        critical_section::{Cs, GlobalIrq},
+        interrupts,
         irqn::SysIrqn,
         scb::SCB,
         systick::SysTickDevice,
     },
     kernel::{
-        kernel::{z_current, z_next, Kernel},
+        kernel::Kernel,
         stack::Stack,
         thread::Thread,
         userspace::{self, k_svc_sleep, k_svc_yield},
@@ -37,16 +37,6 @@ pub extern "C" fn z_systick() {
 
     // /* Increment ticks */
     // unsafe { KERNEL.increment_ticks(&cs) };
-}
-
-fn k_yield() {
-    unsafe {
-        // z_current = KERNEL.current_ptr();
-        // KERNEL.sched_next_thread();
-        // z_next = KERNEL.current_ptr();
-        // k_call_pendsv();
-        // k_svc_yield();
-    };
 }
 
 #[no_mangle]
@@ -136,52 +126,35 @@ pub extern "C" fn _start() {
         kernel.print_tasks();
         kernel.kernel_loop();
     }
+}
 
-    // loop {
-    //     if let Some(byte) = stdio::read() {
-    //         println!("recv: {}", Hex::U8(byte));
+extern "C" fn mytask_shell(arg: *mut c_void) -> ! {
+    loop {
+        if let Some(byte) = stdio::read() {
+            println!("recv: {}", Hex::U8(byte));
 
-    //         println!(
-    //             "[ticks: {}]: cur {}",
-    //             atomic_restore(|cs| unsafe { KERNEL.get_ticks(cs) }),
-    //             unsafe { KERNEL.current() }
-    //         );
+            let mut syscall_ret = 0;
 
-    //         let mut syscall_ret = 0;
+            match byte {
+                b'y' => {
+                    println!("yield !");
+                    userspace::k_svc_yield();
+                }
+                b's' => {
+                    println!("SVC sleep");
+                    syscall_ret = userspace::k_svc_sleep(1000);
+                }
+                b'w' => {
+                    println!("SVC print");
+                    let msg = "Hello using SVC !!\n";
+                    syscall_ret = userspace::k_svc_print(msg);
+                }
+                _ => {}
+            }
 
-    //         match byte {
-    //             b'b' => unsafe { KERNEL.busy_wait(1000) },
-    //             b'p' => {
-    //                 println!("PendSV !");
-    //                 k_yield();
-    //             }
-    //             b'y' => {
-    //                 println!("SVC yield");
-    //                 syscall_ret = userspace::k_svc_yield();
-    //             }
-    //             b's' => {
-    //                 println!("SVC sleep");
-    //                 syscall_ret = userspace::k_svc_sleep(1000);
-    //             }
-    //             b'v' => {
-    //                 println!("SVC debug");
-    //                 syscall_ret = userspace::k_svc_yield();
-    //             }
-    //             b'w' => {
-    //                 println!("SVC print");
-    //                 let msg = "Hello using SVC !!\n";
-    //                 syscall_ret = userspace::k_svc_print(msg);
-    //             }
-    //             b'a' => {
-    //                 println!("aborting...");
-    //                 intrinsics::abort();
-    //             }
-    //             _ => {}
-    //         }
-
-    //         println!("syscall_ret: {}", Hex::U32(syscall_ret as u32));
-    //     }
-    // }
+            println!("syscall_ret: {}", Hex::U32(syscall_ret as u32));
+        }
+    }
 }
 
 extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
@@ -207,8 +180,6 @@ extern "C" fn mytask_entry3(arg: *mut c_void) -> ! {
         println!("MyTask arg: {}, sleep", Hex::U32(arg as u32),);
 
         k_svc_sleep(1000);
-
-        k_yield();
     }
 }
 

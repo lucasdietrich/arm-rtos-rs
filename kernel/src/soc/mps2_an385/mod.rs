@@ -2,8 +2,6 @@ pub mod uart;
 
 pub use uart::{Uart, UartDevice};
 
-use crate::cortex_m::systick::SysTick;
-
 pub const APB_BASE: usize = 0x4000_0000;
 
 pub const UART0_BASE: usize = APB_BASE + 0x4000;

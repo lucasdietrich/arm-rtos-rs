@@ -18,19 +18,9 @@ use crate::{
 
 use super::thread::Thread;
 
-pub fn sleep(ms: u32) {}
-
 #[link_section = ".bss"]
 #[used]
 pub static mut BSS_MYVAR: u32 = 0;
-
-#[used]
-#[no_mangle]
-pub static mut z_current: *mut Thread = core::ptr::null_mut();
-
-#[used]
-#[no_mangle]
-pub static mut z_next: *mut Thread = core::ptr::null_mut();
 
 global_asm!(
     "
