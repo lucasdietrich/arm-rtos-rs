@@ -3,6 +3,7 @@ use core::{arch::asm, ffi::c_void, fmt::Write, intrinsics, mem::MaybeUninit, ptr
 use cortex_m::{interrupt, register::control::Control};
 use kernel::{
     cortex_m::{
+        arch::CortexM,
         cortex_m_rt::FCPU,
         cpu::Cpu,
         critical_section::{Cs, GlobalIrq},
@@ -87,7 +88,7 @@ pub extern "C" fn _start() {
     // Initialize kernel
 
     // init kernel
-    let mut kernel = Kernel::<FreqSysTick>::init();
+    let mut kernel = Kernel::<CortexM, FreqSysTick>::init();
 
     // initialize task1
     #[link_section = ".noinit"]

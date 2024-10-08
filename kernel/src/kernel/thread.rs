@@ -1,82 +1,54 @@
 use core::{cell::Cell, ffi::c_void, fmt::Display, ptr::null_mut};
 
-use crate::{
-    cortex_m::arm::{__basic_sf, __callee_context},
-    list::{self, Node},
-};
+use crate::list::{self, Node};
 
-use super::stack::Stack;
+use super::{stack::Stack, CpuVariant, InitStackFrameTrait, ThreadEntry};
 
-// This function can be naked as it will never return !
-type ThreadEntry = extern "C" fn(*mut c_void) -> !;
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ThreadState {
+    Stopped,
+    Running,
+    Pending,
+}
 
 #[repr(C)]
-pub struct Thread<'a> {
+pub struct Thread<'a, CPU: CpuVariant> {
     pub stack_ptr: Cell<*mut u32>,
 
     // TODO: Review the use of the Cell here...
-    pub context: Cell<__callee_context>,
+    pub context: Cell<CPU::CalleeContext>,
 
-    next: list::Link<'a, Thread<'a>>,
+    pub state: Cell<ThreadState>,
+
+    next: list::Link<'a, Thread<'a, CPU>>,
 }
 
-impl<'a> Node<'a, Thread<'a>> for Thread<'a> {
-    fn next(&'a self) -> &'a list::Link<'a, Thread<'a>> {
+impl<'a, CPU: CpuVariant> Node<'a, Thread<'a, CPU>> for Thread<'a, CPU> {
+    fn next(&'a self) -> &'a list::Link<'a, Thread<'a, CPU>> {
         &self.next
     }
 }
 
-impl<'a> Thread<'a> {
-    pub const fn uninit() -> Self {
-        Thread {
-            stack_ptr: Cell::new(null_mut()),
-            next: list::Link::empty(),
-            context: Cell::new(__callee_context::zeroes()),
-        }
-    }
-
+impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     pub fn is_initialized(&self) -> bool {
         !self.stack_ptr.get().is_null()
     }
 
-    pub fn init(stack: &Stack, entry: ThreadEntry, arg1: *mut c_void) -> Self {
-        #[repr(C)]
-        #[allow(non_camel_case_types)]
-        struct InitStackFrame {
-            pub exc: __basic_sf, // Exception strack frame
-        }
-
-        // TODO: Change this value to something not significant (e.g. 0x00000000)
-        const UNDEFINED_MARKER: u32 = 0xAAAAAAAA;
-        // TODO: Change this value to something not significant (e.g. 0x00000000)
-        const LR_DEFAULT: u32 = 0xFFFFFFFF;
-
-        const XPSR: u32 = 0x01000000; // Thumb bit to 1
-
+    pub fn init(stack: &Stack, entry: ThreadEntry, arg0: *mut c_void) -> Self {
         let thread = Thread {
-            stack_ptr: Cell::new(unsafe { stack.stack_end.sub(size_of::<InitStackFrame>() >> 2) }),
+            stack_ptr: Cell::new(unsafe { stack.stack_end.sub(CPU::InitStackFrame::SIZE_WORDS) }),
             next: list::Link::empty(),
-            context: Cell::new(__callee_context::default()),
+            context: Cell::new(CPU::CalleeContext::default()),
+            state: Cell::new(ThreadState::Stopped),
         };
-        let sf = thread.stack_ptr.get() as *mut InitStackFrame;
 
-        // Create exception stack frame
-        unsafe {
-            (*sf).exc.r0 = arg1 as u32;
-            (*sf).exc.r1 = UNDEFINED_MARKER;
-            (*sf).exc.r2 = UNDEFINED_MARKER;
-            (*sf).exc.r3 = UNDEFINED_MARKER;
-            (*sf).exc.r12 = UNDEFINED_MARKER;
-            (*sf).exc.lr = LR_DEFAULT;
-            (*sf).exc.pc = entry as u32; // return address: task entry function address
-            (*sf).exc.xpsr = XPSR;
-        };
+        CPU::InitStackFrame::initialize_at(thread.stack_ptr.get(), entry, arg0);
 
         thread
     }
 }
 
-impl<'a> Display for Thread<'a> {
+impl<'a, CPU: CpuVariant> Display for Thread<'a, CPU> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Thread sp=0x{:08x}", self.stack_ptr.get() as u32)
     }

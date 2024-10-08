@@ -1,16 +1,11 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use core::arch::global_asm;
-
 use crate::{
-    cortex_m::critical_section::Cs,
     kernel::errno::Kerr,
     println,
     stdio::{self},
 };
-
-use super::kernel::Kernel;
 
 #[repr(u32)]
 #[derive(FromPrimitive)]
@@ -36,8 +31,6 @@ fn sys_sleep(duration: u32) -> i32 {
 
 #[no_mangle]
 extern "C" fn do_syscall(params: *const SVCCallParams) -> i32 {
-    let cs = unsafe { Cs::<Kernel>::new() };
-
     let params = unsafe { &*params };
 
     if let Some(syscall_id) = FromPrimitive::from_u32(params.syscall_id) {

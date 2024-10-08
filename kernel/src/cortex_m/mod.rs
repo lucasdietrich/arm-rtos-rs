@@ -1,4 +1,4 @@
-pub mod arm;
+pub mod arch;
 pub mod cortex_m_rt;
 pub mod cpu;
 pub mod critical_section;

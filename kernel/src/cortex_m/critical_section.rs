@@ -1,14 +1,9 @@
 use core::marker::PhantomData;
 
-use crate::kernel::kernel::Kernel;
-
 trait Sealed {}
 
 #[allow(private_bounds)]
 pub trait CsLevel: Sealed {}
-
-impl<'a> Sealed for Kernel<'a> {}
-impl<'a> CsLevel for Kernel<'a> {}
 
 pub struct GlobalIrq;
 

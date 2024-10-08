@@ -3,8 +3,6 @@ use core::{
     ptr::{self, addr_of, addr_of_mut},
 };
 
-use crate::println;
-
 extern "C" {
     pub fn z_svc();
 }
