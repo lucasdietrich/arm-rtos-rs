@@ -175,7 +175,7 @@ impl<'a, const F: u32> Kernel<'a, F> {
         }
     }
 
-    pub fn current(&self) -> &'a Thread {
+    pub fn current(&self) -> &'a Thread<'a> {
         for (index, task) in self.tasks.iter().enumerate() {
             if self.current == index {
                 return task;
@@ -184,7 +184,7 @@ impl<'a, const F: u32> Kernel<'a, F> {
         panic!("Invalid current index");
     }
 
-    pub fn current_ptr(&'a self) -> *mut Thread {
+    pub fn current_ptr(&self) -> *mut Thread {
         let current = self.current();
         current as *const Thread as *mut Thread
     }
@@ -209,7 +209,7 @@ impl<'a, const F: u32> Kernel<'a, F> {
         self.current = (self.current + 1) % self.count;
     }
 
-    pub fn kernel_loop(&'a self) {
+    pub fn kernel_loop(&mut self) {
         let task = self.current();
 
         let process_sp = task.stack_ptr.get();
