@@ -25,18 +25,7 @@ use kernel::{
 };
 use kernel::{print, println};
 
-const FreqSysTick: u32 = 1_000; // Hz
-
-#[no_mangle]
-pub extern "C" fn z_systick() {
-    /* Systick interrupt is executed with the highest priority and cannot be preempted
-     * This is a *natural* critical section with the maximum degree
-     */
-    let cs = unsafe { Cs::<GlobalIrq>::new() };
-
-    // /* Increment ticks */
-    // unsafe { KERNEL.increment_ticks(&cs) };
-}
+const FreqSysTick: u32 = 10; // Hz
 
 #[no_mangle]
 pub extern "C" fn _start() {

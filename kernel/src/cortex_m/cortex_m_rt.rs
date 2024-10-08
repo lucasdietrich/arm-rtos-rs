@@ -3,14 +3,6 @@ use core::{
     ptr::{self, addr_of, addr_of_mut},
 };
 
-extern "C" {
-    pub fn z_svc();
-}
-
-extern "C" {
-    pub fn z_pendsv();
-}
-
 // TODO move to mps2_an385
 pub const FCPU: u32 = 25_000_000;
 
@@ -40,11 +32,14 @@ extern "C" {
     // which points to the top of the stack
     fn _stack_top();
 
-    /* TODO move to the current crate */
-    fn z_systick();
-
     /* main of the application */
     fn _start();
+
+    /* Various interrupt handlers implementation:
+     * Systick, SVC and PendSV */
+    fn z_systick();
+    fn z_svc();
+    fn z_pendsv();
 }
 
 #[no_mangle]

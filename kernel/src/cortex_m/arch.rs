@@ -124,7 +124,7 @@ impl CpuVariant for CortexM {
     
             // =============================================================
             // PendSV triggered; now we have returned from the exception 
-            // after a SVC called by the user process
+            // after a PendSV called by the user process
             // =============================================================
     
             // 5. Save user process context
@@ -197,6 +197,34 @@ z_pendsv:
     ldr lr, =0xFFFFFFFD
 
     // 4. switch to user
+    bx lr
+    "
+);
+
+global_asm!(
+    "
+    .section .text, \"ax\"
+    .global z_systick
+    .thumb_func
+z_systick:
+    // // Systick interrupt is executed with the highest priority and 
+    // // cannot be preempted This is a *natural* critical section with 
+    // // the maximum degree
+
+    // // 1. Switch to priviledged mode
+    // mov r0, #0
+    // msr CONTROL, r0
+
+    // // 2. sync barrier required after CONTROL, from armv7 manual:
+    // // 'Software must use an ISB barrier instruction to ensure
+    // //  a write to the CONTROL register takes effect before the
+    // //  next instruction is executed.'
+    // isb
+
+    // // 3. load EXC_RETURN value to return in supervisor stack
+    // ldr lr, =0xFFFFFFF9
+
+    // 4. switch to kernel
     bx lr
     "
 );

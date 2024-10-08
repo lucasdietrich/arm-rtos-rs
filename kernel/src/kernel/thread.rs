@@ -1,8 +1,6 @@
-use core::{cell::Cell, ffi::c_void, fmt::Display, ptr::null_mut};
-
-use crate::list::{self, Node};
-
 use super::{stack::Stack, CpuVariant, InitStackFrameTrait, ThreadEntry};
+use crate::list::{self, Node};
+use core::{cell::Cell, ffi::c_void, fmt::Display, ptr::null_mut};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -14,12 +12,8 @@ pub enum ThreadState {
 #[repr(C)]
 pub struct Thread<'a, CPU: CpuVariant> {
     pub stack_ptr: Cell<*mut u32>,
-
-    // TODO: Review the use of the Cell here...
     pub context: Cell<CPU::CalleeContext>,
-
     pub state: Cell<ThreadState>,
-
     next: list::Link<'a, Thread<'a, CPU>>,
 }
 

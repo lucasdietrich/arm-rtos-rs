@@ -2,7 +2,7 @@ use core::ops::Deref;
 
 use volatile_register::RW;
 
-use super::SCS_BASE;
+use super::{cortex_m_rt::FCPU, SCS_BASE};
 
 pub const SYSTICK_BASE: usize = SCS_BASE + 0x0010;
 pub const SYSTICK: *mut SysTick = SYSTICK_BASE as *mut SysTick;
@@ -25,6 +25,7 @@ pub struct SysTickDevice<const FCPU: u32>;
 const ENABLE_POS: u32 = 0;
 const TICKINT_POS: u32 = 1;
 const CLKSOURCE_POS: u32 = 2;
+const COUNTFLAG_POS: u32 = 16;
 
 impl<const FCPU: u32> SysTickDevice<FCPU> {
     pub const PTR: *const SysTick = SYSTICK as *const _;
@@ -45,6 +46,14 @@ impl<const FCPU: u32> SysTickDevice<FCPU> {
             (*self).val.write(0);
             (*self).ctrl.write(SOURCE | ENABLE | tickint);
         }
+    }
+
+    pub fn get_current(&self) -> u32 {
+        (*self).val.read()
+    }
+
+    pub fn get_countflag(&self) -> bool {
+        (*self).ctrl.read() & (1 << COUNTFLAG_POS) != 0
     }
 }
 

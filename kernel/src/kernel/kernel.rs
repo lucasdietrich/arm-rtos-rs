@@ -12,7 +12,7 @@ use crate::{
 
 use super::{thread::Thread, CpuVariant};
 
-// N: Maximum number of threads supported
+// CPU: CPU variant
 // F: systick frequency (Hz)
 #[repr(C)]
 pub struct Kernel<'a, CPU: CpuVariant, const F: u32 = 1> {
