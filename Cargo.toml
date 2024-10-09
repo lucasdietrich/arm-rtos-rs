@@ -10,10 +10,11 @@ panic = "abort"
 lto = true # true
 opt-level = 0 # "z"
 debug = true
+codegen-units = 1
 
 [profile.release]
 panic = "abort"
 lto = true
-opt-level = 0 # "z"
+opt-level = "z" # "z"
 debug = true
 codegen-units = 1

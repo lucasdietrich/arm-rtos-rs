@@ -1,6 +1,7 @@
 use core::ffi::c_void;
 
 pub mod errno;
+pub mod idle;
 pub mod kernel;
 pub mod stack;
 pub mod syscalls;
@@ -18,6 +19,8 @@ pub trait InitStackFrameTrait: Sized {
 }
 
 pub trait CpuVariant {
+    const FCPU: u32;
+
     type CalleeContext: Default;
     type InitStackFrame: InitStackFrameTrait;
 

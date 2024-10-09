@@ -85,6 +85,10 @@ impl Default for __callee_context {
 pub struct CortexM;
 
 impl CpuVariant for CortexM {
+    const FCPU: u32 = 25_000_000;
+
+    // Add types for interrupts handlers like sytick, pendsv, svc
+
     type CalleeContext = __callee_context;
     type InitStackFrame = __basic_sf;
 
@@ -151,6 +155,7 @@ global_asm!(
     "
     .section .text, \"ax\"
     .global z_svc
+    .extern Z_SYSCALL_FLAG
     .thumb_func
 z_svc:
     // SVC manages switch to the kernel
@@ -165,10 +170,15 @@ z_svc:
     //  next instruction is executed.'
     isb
 
-    // 3. load EXC_RETURN value to return in supervisor stack
+    // 3. Write 1 to Z_SYSCALL_FLAG variable
+    ldr r0, =Z_SYSCALL_FLAG
+    mov r1, #1
+    str r1, [r0]
+
+    // 4. load EXC_RETURN value to return in supervisor stack
     ldr lr, =0xFFFFFFF9
 
-    // 4. switch to kernel
+    // 5. switch to kernel
     bx lr
     "
 );
@@ -207,22 +217,22 @@ global_asm!(
     .global z_systick
     .thumb_func
 z_systick:
-    // // Systick interrupt is executed with the highest priority and 
-    // // cannot be preempted This is a *natural* critical section with 
-    // // the maximum degree
+    // Systick interrupt is executed with the highest priority and 
+    // cannot be preempted This is a *natural* critical section with 
+    // the maximum degree
 
-    // // 1. Switch to priviledged mode
-    // mov r0, #0
-    // msr CONTROL, r0
+    // 1. Switch to priviledged mode
+    mov r0, #0
+    msr CONTROL, r0
 
-    // // 2. sync barrier required after CONTROL, from armv7 manual:
-    // // 'Software must use an ISB barrier instruction to ensure
-    // //  a write to the CONTROL register takes effect before the
-    // //  next instruction is executed.'
-    // isb
+    // 2. sync barrier required after CONTROL, from armv7 manual:
+    // 'Software must use an ISB barrier instruction to ensure
+    //  a write to the CONTROL register takes effect before the
+    //  next instruction is executed.'
+    isb
 
-    // // 3. load EXC_RETURN value to return in supervisor stack
-    // ldr lr, =0xFFFFFFF9
+    // 3. load EXC_RETURN value to return in supervisor stack
+    ldr lr, =0xFFFFFFF9
 
     // 4. switch to kernel
     bx lr

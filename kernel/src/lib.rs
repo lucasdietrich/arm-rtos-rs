@@ -11,4 +11,5 @@ pub mod serial;
 pub mod serial_utils;
 pub mod soc;
 pub mod stdio;
+pub mod timer;
 pub mod utils;

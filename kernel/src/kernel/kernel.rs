@@ -1,39 +1,58 @@
-use core::{marker::PhantomData, u64};
-
-use crate::{
-    cortex_m::{
-        critical_section::{Cs, GlobalIrq},
-        interrupts,
-    },
-    list, println,
-    serial_utils::Hex,
-    stdio,
+use super::{idle::Idle, thread::Thread, CpuVariant};
+use crate::{cortex_m::systick::SysTick, list, println, serial_utils::Hex, stdio};
+use core::{
+    marker::PhantomData,
+    ptr::{addr_of_mut, read_volatile, write_volatile},
+    u64,
 };
 
-use super::{thread::Thread, CpuVariant};
+pub enum SupervisorCallReason {
+    Syscall,
+    Interrupted,
+}
+
+pub enum SchedulerVerdict<'a, CPU: CpuVariant> {
+    RunProcess(&'a Thread<'a, CPU>),
+    Idle,
+}
+
+/* This address must be accessible from asm */
+#[used]
+#[no_mangle]
+static mut Z_SYSCALL_FLAG: u32 = 0;
 
 // CPU: CPU variant
-// F: systick frequency (Hz)
 #[repr(C)]
-pub struct Kernel<'a, CPU: CpuVariant, const F: u32 = 1> {
+pub struct Kernel<'a, CPU: CpuVariant> {
     tasks: list::List<'a, Thread<'a, CPU>>,
     count: usize,
     current: usize,
 
+    // List of pending threads
+    timeout_queue: list::List<'a, Thread<'a, CPU>>,
+
+    // systick
+    systick: SysTick,
+
     // Ticks counter: period: P (ms)
     ticks: u64,
 
-    _cpu: PhantomData<CPU>,
+    // Idle thread
+    idle: Thread<'a, CPU>,
 }
 
-impl<'a, CPU: CpuVariant, const F: u32> Kernel<'a, CPU, F> {
-    pub const fn init() -> Kernel<'a, CPU, F> {
+impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
+    pub fn init(systick: SysTick) -> Kernel<'a, CPU> {
+        let idle = Idle::init();
+
         Kernel {
             tasks: list::List::empty(),
             count: 0, // main thread
             current: 0,
+            timeout_queue: list::List::empty(),
+            systick,
             ticks: 0,
-            _cpu: PhantomData,
+            idle,
         }
     }
 
@@ -59,49 +78,64 @@ impl<'a, CPU: CpuVariant, const F: u32> Kernel<'a, CPU, F> {
         panic!("Invalid current index");
     }
 
-    pub fn current_ptr(&self) -> *mut Thread<CPU> {
-        let current = self.current();
-        current as *const Thread<CPU> as *mut Thread<CPU>
-    }
-
-    // TODO: Remove the Cs parameter, access to Kernel is already atomic
-    pub fn increment_ticks(&mut self, _cs: &Cs<GlobalIrq>) {
+    pub fn increment_ticks(&mut self) {
         self.ticks += 1;
     }
 
-    // TODO: Remove the Cs parameter, access to Kernel is already atomic
-    pub fn get_ticks(&self, _cs: &Cs<GlobalIrq>) -> u64 {
+    pub fn get_ticks(&self) -> u64 {
         self.ticks
-    }
-
-    // TODO: Remove the cs, access to Kernel is already atomic
-    pub fn busy_wait(&self, ms: u32) {
-        let end = interrupts::atomic_restore(|cs| self.get_ticks(cs))
-            .saturating_add(((ms * F) / 1000) as u64);
-        while interrupts::atomic_restore(|cs| self.get_ticks(cs)) < end {}
     }
 
     pub fn sched_next_thread(&mut self) {
         self.current = (self.current + 1) % self.count;
     }
 
-    pub fn kernel_loop(&mut self) {
-        let task = self.current();
+    fn switch_to(&mut self, current: &Thread<'_, CPU>) -> SupervisorCallReason {
+        // Retrieve process last position of stack pointer
+        let process_sp = current.stack_ptr.get();
 
-        let process_sp = task.stack_ptr.get();
-        println!("PSP: 0x{}", Hex::U32(process_sp as u32));
+        // Retrieve process last context
+        let process_context = current.context.as_ptr();
 
-        let process_context = task.context.as_ptr();
-
+        // Switch to user process
         let process_sp = unsafe { CPU::switch_to_user(process_sp, process_context) };
 
-        stdio::write_bytes(&[b'!']);
+        // At this point we returned from the user process,
+        // process context has already been saved but we need
+        // to save the position of the stack pointer for next execution
+        current.stack_ptr.set(process_sp);
 
-        println!("PSP: 0x{}", Hex::U32(process_sp as u32));
+        // If the flag is set it means, the current process called a syscall,
+        // otherwise the switch was triggered by an interrupt
+        let syscall_flag = unsafe { read_volatile(&*addr_of_mut!(Z_SYSCALL_FLAG)) };
+        unsafe {
+            write_volatile(&mut *addr_of_mut!(Z_SYSCALL_FLAG), 0);
+        }
 
-        task.stack_ptr.set(process_sp);
+        if syscall_flag != 0 {
+            SupervisorCallReason::Syscall
+        } else {
+            SupervisorCallReason::Interrupted
+        }
+    }
 
-        println!("Returned from switch_to_user");
+    pub fn kernel_loop(&mut self) {
+        // Retrieve next thread to be executed
+        let current = self.current();
+
+        // Switch to chosen user process
+        // when returning from user process, we need to handle various events
+        match self.switch_to(current) {
+            SupervisorCallReason::Syscall => {
+                // println!("SYSCALL");
+            }
+            SupervisorCallReason::Interrupted => {
+                // 1. Handle systick interrupt if it occured
+                if self.systick.get_countflag() {
+                    self.increment_ticks();
+                }
+            }
+        }
 
         self.sched_next_thread();
     }

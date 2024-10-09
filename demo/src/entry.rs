@@ -3,14 +3,8 @@ use core::{arch::asm, ffi::c_void, fmt::Write, intrinsics, mem::MaybeUninit, ptr
 use cortex_m::{interrupt, register::control::Control};
 use kernel::{
     cortex_m::{
-        arch::CortexM,
-        cortex_m_rt::FCPU,
-        cpu::Cpu,
-        critical_section::{Cs, GlobalIrq},
-        interrupts,
-        irqn::SysIrqn,
-        scb::SCB,
-        systick::SysTickDevice,
+        arch::CortexM, cortex_m_rt::FCPU, cpu::Cpu, interrupts, irqn::SysIrqn, scb::SCB,
+        systick::SysTick,
     },
     kernel::{
         kernel::Kernel,
@@ -25,7 +19,7 @@ use kernel::{
 };
 use kernel::{print, println};
 
-const FreqSysTick: u32 = 10; // Hz
+const FreqSysTick: u32 = 100; // Hz
 
 #[no_mangle]
 pub extern "C" fn _start() {
@@ -37,9 +31,6 @@ pub extern "C" fn _start() {
 
     // Set UART0 as main uart
     stdio::set_uart(uart);
-
-    let mut systick = SysTickDevice::<FCPU>::instance();
-    systick.configure::<FreqSysTick>(true);
 
     // Show startup state    let cpuid = SCB::new().get_cpuid();
     let mut scb = SCB::instance();
@@ -77,38 +68,37 @@ pub extern "C" fn _start() {
     // Initialize kernel
 
     // init kernel
-    let mut kernel = Kernel::<CortexM, FreqSysTick>::init();
+    let systick = SysTick::configure_period::<FCPU, FreqSysTick>(true);
+    let mut kernel = Kernel::<CortexM>::init(systick);
 
     // initialize task1
     #[link_section = ".noinit"]
-    static mut THREAD_STACK1: [u8; 32768] = [0; 32768];
+    static mut THREAD_STACK1: Stack<32768> = Stack::init();
 
-    let stack1 = Stack::new(unsafe { &mut THREAD_STACK1 }).unwrap();
+    let stack1 = unsafe { &mut THREAD_STACK1 }.get_info();
     let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void);
 
     kernel.register_thread(&task1);
 
     // initialize task2
     #[link_section = ".noinit"]
-    static mut THREAD_STACK2: [u8; 32768] = [0; 32768];
+    static mut THREAD_STACK2: Stack<32768> = Stack::init();
 
-    let stack2 = Stack::new(unsafe { &mut THREAD_STACK2 }).unwrap();
+    let stack2 = unsafe { &mut THREAD_STACK2 }.get_info();
     let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void);
 
     kernel.register_thread(&task2);
 
     // initialize task3
     #[link_section = ".noinit"]
-    static mut THREAD_STACK3: [u8; 32768] = [0; 32768];
+    static mut THREAD_STACK3: Stack<32768> = Stack::init();
 
-    let stack3 = Stack::new(unsafe { &mut THREAD_STACK3 }).unwrap();
+    let stack3 = unsafe { &mut THREAD_STACK3 }.get_info();
     let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void);
 
     kernel.register_thread(&task3);
 
-    // init kernel
     loop {
-        kernel.print_tasks();
         kernel.kernel_loop();
     }
 }
