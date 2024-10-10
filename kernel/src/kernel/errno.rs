@@ -60,6 +60,8 @@ pub enum Kerr {
     ENOANO = 55,       /* No anode */
     EBADRQC = 56,      /* Invalid request code */
     EBADSLT = 57,      /* Invalid slot */
+
+    ETIMEDOUT = 116, /* Connection timed out */
 }
 
 pub const EWOULDBLOCK: Kerr = Kerr::EAGAIN; /* Operation would block */

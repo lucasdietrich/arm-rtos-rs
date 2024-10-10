@@ -3,13 +3,59 @@ use super::{
     CpuVariant, InitStackFrameTrait, ThreadEntry,
 };
 use crate::list::{self, Node};
-use core::{cell::Cell, ffi::c_void, fmt::Display, ptr::null_mut};
+use core::{
+    cell::Cell,
+    ffi::c_void,
+    fmt::Display,
+    future::Pending,
+    ptr::{self, null_mut},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Stopped,
     Running,
-    Pending,
+    Pending(PendingReason),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PendingReason {
+    // waiting for timeout, wait until specified uptime is reached (in ticks)
+    Timeout(u64),
+    // Waiting for synchronization object to become ready
+    Sync(i32),
+    // Waiting for synchronization object to become ready or timeout
+    SyncOrTimeout(i32, u64),
+}
+
+#[cfg(feature = "kernel-stats")]
+#[derive(Default)]
+pub struct ThreadStats {
+    pub syscalls: Cell<u32>,
+}
+
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ThreadPriority {
+    Cooperative(i8),
+    Preemptive(i8),
+}
+
+impl ThreadPriority {
+    pub fn from(priority: i8) -> ThreadPriority {
+        if priority >= 0 {
+            ThreadPriority::Preemptive(priority)
+        } else {
+            ThreadPriority::Cooperative(priority)
+        }
+    }
+
+    pub fn raw_priority(&self) -> i8 {
+        match self {
+            ThreadPriority::Preemptive(priority) => *priority,
+            ThreadPriority::Cooperative(priority) => *priority,
+        }
+    }
 }
 
 /// Represents a thread in a cooperative multitasking environment.
@@ -41,6 +87,13 @@ pub struct Thread<'a, CPU: CpuVariant> {
     /// for CPU execution.
     pub state: Cell<ThreadState>,
 
+    /// Thread priority (preemptive/cooperative)
+    pub priority: ThreadPriority,
+
+    /// Stats for the current thread
+    #[cfg(feature = "kernel-stats")]
+    pub stats: ThreadStats,
+
     /// Internal reference to the next thread in a linked list structure.
     ///
     /// This link is used to organize threads in a list.
@@ -58,17 +111,51 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         !self.stack_ptr.get().is_null()
     }
 
-    pub fn init(stack: &StackInfo, entry: ThreadEntry, arg0: *mut c_void) -> Self {
+    pub fn init(
+        stack: &StackInfo,
+        entry: ThreadEntry,
+        arg0: *mut c_void,
+        raw_priority: i8,
+    ) -> Self {
         let thread = Thread {
             stack_ptr: Cell::new(unsafe { stack.stack_end.sub(CPU::InitStackFrame::SIZE_WORDS) }),
             next: list::Link::empty(),
             context: Cell::new(CPU::CalleeContext::default()),
+            priority: ThreadPriority::from(raw_priority),
             state: Cell::new(ThreadState::Stopped),
+            #[cfg(feature = "kernel-stats")]
+            stats: ThreadStats::default(),
         };
 
         CPU::InitStackFrame::initialize_at(thread.stack_ptr.get(), entry, arg0);
 
         thread
+    }
+
+    pub fn set_ready(&self) {
+        self.state.set(ThreadState::Running);
+    }
+
+    pub fn is_ready(&self) -> bool {
+        matches!(self.state.get(), ThreadState::Running)
+    }
+
+    // Return time (in ticks) when the thread is schedulded for timeout
+    pub fn get_timeout_ticks(&self) -> Option<u64> {
+        match self.state.get() {
+            ThreadState::Pending(PendingReason::SyncOrTimeout(.., timeout)) => Some(timeout),
+            ThreadState::Pending(PendingReason::Timeout(timeout)) => Some(timeout),
+            _ => None,
+        }
+    }
+
+    pub fn set_syscall_return_value(&self, ret: i32) {
+        todo!()
+    }
+
+    // make sure a syscall is pending, otherwise it could breack the stack
+    pub unsafe fn set_syscall_return_value_unchecked(&self, ret: i32) {
+        ptr::write(self.stack_ptr.get().add(0), ret as u32);
     }
 }
 

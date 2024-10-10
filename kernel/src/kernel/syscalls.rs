@@ -17,25 +17,6 @@ pub struct SVCCallParams {
     pub syscall_id: u8, // Contains the SyscallId
 }
 
-// #[repr(C)]
-// pub struct SysCallResult(i32);
-
-// impl SysCallResult {
-//     pub const NO_SUCH_SYSCALL: SysCallResult = SysCallResult(Kerr::ENOSYS as i32);
-// }
-
-// impl From<i32> for SysCallResult {
-//     fn from(value: i32) -> Self {
-//         SysCallResult(value)
-//     }
-// }
-
-// impl Into<i32> for SysCallResult {
-//     fn into(self) -> i32 {
-//         self.0
-//     }
-// }
-
 #[repr(u8)]
 #[derive(FromPrimitive)]
 pub enum SyscallId {

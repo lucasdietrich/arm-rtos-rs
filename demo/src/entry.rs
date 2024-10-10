@@ -19,7 +19,7 @@ use kernel::{
 };
 use kernel::{print, println};
 
-const FreqSysTick: u32 = 100; // Hz
+pub const FreqSysTick: u32 = 100; // Hz
 
 #[no_mangle]
 pub extern "C" fn _start() {
@@ -76,7 +76,7 @@ pub extern "C" fn _start() {
     static mut THREAD_STACK1: Stack<32768> = Stack::init();
 
     let stack1 = unsafe { &mut THREAD_STACK1 }.get_info();
-    let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void);
+    let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void, 0);
 
     kernel.register_thread(&task1);
 
@@ -85,7 +85,7 @@ pub extern "C" fn _start() {
     static mut THREAD_STACK2: Stack<32768> = Stack::init();
 
     let stack2 = unsafe { &mut THREAD_STACK2 }.get_info();
-    let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void);
+    let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void, 0);
 
     kernel.register_thread(&task2);
 
@@ -94,7 +94,7 @@ pub extern "C" fn _start() {
     static mut THREAD_STACK3: Stack<32768> = Stack::init();
 
     let stack3 = unsafe { &mut THREAD_STACK3 }.get_info();
-    let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void);
+    let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void, 0);
 
     kernel.register_thread(&task3);
 
@@ -146,7 +146,8 @@ extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
         println!("[{}] counter: {}", Hex::U32(arg as u32), Hex::U32(counter));
         counter = counter.wrapping_add(1);
 
-        k_svc_yield();
+        let svc_ret = k_svc_sleep(1000);
+        println!("svc_ret: {}", svc_ret);
     }
 }
 

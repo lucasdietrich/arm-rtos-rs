@@ -9,6 +9,7 @@ use crate::{
     kernel::{
         errno::Kerr,
         syscalls::{IoSyscall, Syscall},
+        thread::{PendingReason, ThreadState},
     },
     list, println, stdio,
 };
@@ -36,11 +37,6 @@ static mut Z_SYSCALL_FLAG: u32 = 0;
 #[repr(C)]
 pub struct Kernel<'a, CPU: CpuVariant> {
     tasks: list::List<'a, Thread<'a, CPU>>,
-    count: usize,
-    current: usize,
-
-    // List of pending threads
-    timeout_queue: list::List<'a, Thread<'a, CPU>>,
 
     // systick
     systick: SysTick,
@@ -58,9 +54,7 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
 
         Kernel {
             tasks: list::List::empty(),
-            count: 0, // main thread
-            current: 0,
-            timeout_queue: list::List::empty(),
+            // timeout_queue: list::List::empty(),
             systick,
             ticks: 0,
             idle,
@@ -70,23 +64,12 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
     pub fn register_thread(&mut self, thread: &'a Thread<'a, CPU>) {
         self.tasks.push_front(&thread);
         thread.state.set(super::thread::ThreadState::Running);
-        self.count += 1;
     }
 
     pub fn print_tasks(&self) {
-        println!("print_tasks (cur: {} count: {})", self.current, self.count);
         for task in self.tasks.iter() {
             println!("{}", task);
         }
-    }
-
-    pub fn current(&self) -> &'a Thread<'a, CPU> {
-        for (index, task) in self.tasks.iter().enumerate() {
-            if self.current == index {
-                return task;
-            }
-        }
-        panic!("Invalid current index");
     }
 
     pub fn increment_ticks(&mut self) {
@@ -97,11 +80,7 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         self.ticks
     }
 
-    pub fn sched_next_thread(&mut self) {
-        self.current = (self.current + 1) % self.count;
-    }
-
-    fn switch_to(&mut self, current: &Thread<'_, CPU>) -> SupervisorCallReason {
+    fn switch_to(current: &Thread<'_, CPU>) -> SupervisorCallReason {
         // Retrieve process last position of stack pointer
         let process_sp = current.stack_ptr.get();
 
@@ -119,8 +98,15 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         unsafe {
             // If the flag is set it means, the current process called a syscall,
             // otherwise the switch was triggered by an interrupt
+            //
+            // Another idea to achieve this goal could have been to read the user
+            // process yielded instruction and compare it to "svc" to know if the
+            // user thread triggered a syscall. Unfortunately, I'm not sure we
+            // can guarentee 100% it wasn't an interrupt which triggered the
+            // syscall at this exact moment ???
             let syscall_flag = read_volatile(&*addr_of_mut!(Z_SYSCALL_FLAG));
 
+            // Clear flag
             write_volatile(&mut *addr_of_mut!(Z_SYSCALL_FLAG), 0);
 
             if syscall_flag != 0 {
@@ -134,14 +120,17 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
                 // sp + 18: return address (instruction following the svc)
                 // sp + 1C: xPSR
 
+                // Read syscall arguments from stack
                 let r0 = ptr::read(new_process_sp.add(0));
                 let r1 = ptr::read(new_process_sp.add(1));
                 let r2 = ptr::read(new_process_sp.add(2));
                 let r3 = ptr::read(new_process_sp.add(3));
 
-                // "svc 0xbb" is encoded as the following 16bits instruction
-                // dfbb
+                // Read syscall main id from yielded PC
+                // "svc 0xbb" is encoded as the following 16bits instruction: 0xdfbb
                 let pc_svc = ptr::read(new_process_sp.add(6)) as *const u16;
+                // sub 1 because return address (RA) includes the "thumb" flag that
+                // need to be removed to get the actual instruction
                 let svc_instruction = ptr::read(pc_svc.sub(1));
                 let syscall_id = (svc_instruction & 0xFF) as u8;
 
@@ -160,11 +149,42 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         }
     }
 
-    unsafe fn do_syscall(&mut self, thread: &'a Thread<'a, CPU>, syscall: Syscall) -> i32 {
+    /// Handle the syscall from the thread
+    ///
+    /// Return Some(i32) value to return to the process, or None if the syscall
+    /// has not completed yet.
+    ///
+    /// A null (0) value returned to the process means the syscall succeeded
+    ///
+    /// Note that the thread must not be marked as "Running" if the returned value
+    /// is not Some()
+    unsafe fn do_syscall(&mut self, thread: &'a Thread<'a, CPU>, syscall: Syscall) -> Option<i32> {
         println!("{:?}", syscall);
 
+        #[cfg(feature = "kernel-stats")]
+        thread.stats.syscalls.set(thread.stats.syscalls.get() + 1);
+
         match syscall {
-            Syscall::Kernel(KernelSyscall::Yield) => 0,
+            Syscall::Kernel(KernelSyscall::Yield) => Some(0),
+            Syscall::Kernel(KernelSyscall::Sleep { ms }) => match ms {
+                0 => Some(0),
+                u32::MAX => {
+                    thread.state.set(ThreadState::Stopped);
+                    Some(0)
+                }
+                _ => {
+                    // TODO replace 10 with the actual TICKS_PER_MSEC value
+                    let expiration_time = self.get_ticks() + (ms / 10) as u64;
+
+                    thread
+                        .state
+                        .set(ThreadState::Pending(PendingReason::Timeout(
+                            expiration_time,
+                        )));
+
+                    None
+                }
+            },
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
                 // rebuild &[u8] from (string and len)
                 let slice = core::slice::from_raw_parts(ptr, len);
@@ -172,38 +192,81 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
                 // Direct write
                 stdio::write_bytes(slice);
 
-                0
+                Some(0)
             }
-            _ => Kerr::ENOSYS as i32,
+            _ => Some(Kerr::ENOSYS as i32),
+        }
+    }
+
+    fn sched_choose_next(&mut self) -> SchedulerVerdict<'a, CPU> {
+        // Order by priority + roll over available thread if there are multiple
+        let mut thread_candidate: Option<&Thread<'a, CPU>> = None;
+
+        for (index, thread) in self
+            .tasks
+            .iter()
+            .filter(|thread| thread.is_ready())
+            .enumerate()
+        {
+            return SchedulerVerdict::RunProcess(thread);
+        }
+
+        SchedulerVerdict::Idle
+    }
+
+    fn handle_interrupts(&mut self) {
+        // 1. Handle systick interrupt if it occured
+        if self.systick.get_countflag() {
+            self.increment_ticks();
+
+            // Check if any thread timed out
+            for thread in self
+                .tasks
+                .iter()
+                .filter(|thread| thread.get_timeout_ticks().is_some())
+            {
+                if self.get_ticks() >= thread.get_timeout_ticks().unwrap() {
+                    thread.set_ready();
+                    unsafe {
+                        thread.set_syscall_return_value_unchecked(-(Kerr::ETIMEDOUT as i32));
+                    }
+                }
+            }
         }
     }
 
     pub fn kernel_loop(&mut self) {
         // Retrieve next thread to be executed
-        let current = self.current();
+        let scheduler_verdict = self.sched_choose_next();
 
-        // Switch to chosen user process
-        // when returning from user process, we need to handle various events
-        match self.switch_to(current) {
-            SupervisorCallReason::Syscall(syscall_params) => {
-                unsafe {
+        match scheduler_verdict {
+            // Switch to chosen user process
+            // when returning from user process, we need to handle various events
+            SchedulerVerdict::RunProcess(process) => match Self::switch_to(process) {
+                SupervisorCallReason::Syscall(syscall_params) => unsafe {
                     let ret = if let Some(syscall) = Syscall::from_svc_params(syscall_params) {
-                        self.do_syscall(current, syscall)
+                        self.do_syscall(process, syscall)
                     } else {
-                        Kerr::ENOSYS as i32
+                        Some(Kerr::ENOSYS as i32)
                     };
-                    // Set syscall return value at r0
-                    ptr::write(current.stack_ptr.get().add(0), ret as u32);
-                }
-            }
-            SupervisorCallReason::Interrupted => {
-                // 1. Handle systick interrupt if it occured
-                if self.systick.get_countflag() {
-                    self.increment_ticks();
-                }
-            }
-        }
 
-        self.sched_next_thread();
+                    // Syscall completed, return value in user process stack in r0 register
+                    if let Some(result) = ret {
+                        process.set_syscall_return_value_unchecked(result);
+                    }
+                },
+                SupervisorCallReason::Interrupted => {
+                    self.handle_interrupts();
+
+                    // TODO: If current thread is cooperative, we must return to it
+                }
+            },
+
+            SchedulerVerdict::Idle => match Self::switch_to(&self.idle) {
+                SupervisorCallReason::Interrupted => self.handle_interrupts(),
+                // Idle thread should never use syscalls
+                _ => panic!("IDLE fired syscall"),
+            },
+        };
     }
 }
