@@ -3,6 +3,7 @@
 #![feature(stdarch_arm_neon_intrinsics)]
 #![feature(core_intrinsics)]
 #![feature(maybe_uninit_uninit_array)]
+#![feature(asm_const)]
 
 pub mod cortex_m;
 pub mod kernel;

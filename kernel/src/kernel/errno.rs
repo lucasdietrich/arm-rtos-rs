@@ -1,4 +1,4 @@
-use num_derive::FromPrimitive;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 #[repr(i32)]
 #[derive(FromPrimitive)]

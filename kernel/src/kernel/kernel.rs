@@ -1,13 +1,24 @@
-use super::{idle::Idle, thread::Thread, CpuVariant};
-use crate::{cortex_m::systick::SysTick, list, println, serial_utils::Hex, stdio};
+use super::{
+    idle::Idle,
+    syscalls::{KernelSyscall, SVCCallParams},
+    thread::Thread,
+    CpuVariant,
+};
+use crate::{
+    cortex_m::systick::SysTick,
+    kernel::{
+        errno::Kerr,
+        syscalls::{IoSyscall, Syscall},
+    },
+    list, println, stdio,
+};
 use core::{
-    marker::PhantomData,
-    ptr::{addr_of_mut, read_volatile, write_volatile},
+    ptr::{self, addr_of_mut, read_volatile, write_volatile},
     u64,
 };
 
 pub enum SupervisorCallReason {
-    Syscall,
+    Syscall(SVCCallParams),
     Interrupted,
 }
 
@@ -98,24 +109,72 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         let process_context = current.context.as_ptr();
 
         // Switch to user process
-        let process_sp = unsafe { CPU::switch_to_user(process_sp, process_context) };
+        let new_process_sp = unsafe { CPU::switch_to_user(process_sp, process_context) };
 
         // At this point we returned from the user process,
         // process context has already been saved but we need
         // to save the position of the stack pointer for next execution
-        current.stack_ptr.set(process_sp);
+        current.stack_ptr.set(new_process_sp);
 
-        // If the flag is set it means, the current process called a syscall,
-        // otherwise the switch was triggered by an interrupt
-        let syscall_flag = unsafe { read_volatile(&*addr_of_mut!(Z_SYSCALL_FLAG)) };
         unsafe {
-            write_volatile(&mut *addr_of_mut!(Z_SYSCALL_FLAG), 0);
-        }
+            // If the flag is set it means, the current process called a syscall,
+            // otherwise the switch was triggered by an interrupt
+            let syscall_flag = read_volatile(&*addr_of_mut!(Z_SYSCALL_FLAG));
 
-        if syscall_flag != 0 {
-            SupervisorCallReason::Syscall
-        } else {
-            SupervisorCallReason::Interrupted
+            write_volatile(&mut *addr_of_mut!(Z_SYSCALL_FLAG), 0);
+
+            if syscall_flag != 0 {
+                // At this point, the process exception frame looks like this
+                // sp + 00: r0 (syscall arg 0)
+                // sp + 04: r1 (syscall arg 1)
+                // sp + 08: r2 (syscall arg 2)
+                // sp + 0C: r3 (syscall arg 3)
+                // sp + 10: r12
+                // sp + 14: lr
+                // sp + 18: return address (instruction following the svc)
+                // sp + 1C: xPSR
+
+                let r0 = ptr::read(new_process_sp.add(0));
+                let r1 = ptr::read(new_process_sp.add(1));
+                let r2 = ptr::read(new_process_sp.add(2));
+                let r3 = ptr::read(new_process_sp.add(3));
+
+                // "svc 0xbb" is encoded as the following 16bits instruction
+                // dfbb
+                let pc_svc = ptr::read(new_process_sp.add(6)) as *const u16;
+                let svc_instruction = ptr::read(pc_svc.sub(1));
+                let syscall_id = (svc_instruction & 0xFF) as u8;
+
+                let syscall_params = SVCCallParams {
+                    r0,
+                    r1,
+                    r2,
+                    r3,
+                    syscall_id,
+                };
+
+                SupervisorCallReason::Syscall(syscall_params)
+            } else {
+                SupervisorCallReason::Interrupted
+            }
+        }
+    }
+
+    unsafe fn do_syscall(&mut self, thread: &'a Thread<'a, CPU>, syscall: Syscall) -> i32 {
+        println!("{:?}", syscall);
+
+        match syscall {
+            Syscall::Kernel(KernelSyscall::Yield) => 0,
+            Syscall::Io(IoSyscall::Print { ptr, len }) => {
+                // rebuild &[u8] from (string and len)
+                let slice = core::slice::from_raw_parts(ptr, len);
+
+                // Direct write
+                stdio::write_bytes(slice);
+
+                0
+            }
+            _ => Kerr::ENOSYS as i32,
         }
     }
 
@@ -126,8 +185,16 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         // Switch to chosen user process
         // when returning from user process, we need to handle various events
         match self.switch_to(current) {
-            SupervisorCallReason::Syscall => {
-                // println!("SYSCALL");
+            SupervisorCallReason::Syscall(syscall_params) => {
+                unsafe {
+                    let ret = if let Some(syscall) = Syscall::from_svc_params(syscall_params) {
+                        self.do_syscall(current, syscall)
+                    } else {
+                        Kerr::ENOSYS as i32
+                    };
+                    // Set syscall return value at r0
+                    ptr::write(current.stack_ptr.get().add(0), ret as u32);
+                }
             }
             SupervisorCallReason::Interrupted => {
                 // 1. Handle systick interrupt if it occured

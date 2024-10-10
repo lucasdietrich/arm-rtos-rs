@@ -7,4 +7,5 @@
     },
     "rust-analyzer.check.allTargets": false,
     "cortex-debug.variableUseNaturalFormat": false,
+    "editor.rulers": [80]
 }

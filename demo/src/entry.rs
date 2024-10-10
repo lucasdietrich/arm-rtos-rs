@@ -10,7 +10,7 @@ use kernel::{
         kernel::Kernel,
         stack::Stack,
         thread::Thread,
-        userspace::{self, k_svc_sleep, k_svc_yield},
+        userspace::{self, k_svc_print, k_svc_sleep, k_svc_yield},
     },
     serial::{SerialConfig, SerialTrait},
     serial_utils::Hex,
@@ -154,6 +154,8 @@ extern "C" fn mytask_entry3(arg: *mut c_void) -> ! {
     loop {
         println!("MyTask arg: {}, sleep", Hex::U32(arg as u32),);
 
+        let msg = "Hello using SVC !!\n";
+        k_svc_print(msg);
         k_svc_sleep(1000);
     }
 }

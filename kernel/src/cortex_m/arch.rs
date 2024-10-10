@@ -158,7 +158,7 @@ global_asm!(
     .extern Z_SYSCALL_FLAG
     .thumb_func
 z_svc:
-    // SVC manages switch to the kernel
+    // SVC manages syscall and switch to the kernel
 
     // 1. Switch to priviledged mode
     mov r0, #0

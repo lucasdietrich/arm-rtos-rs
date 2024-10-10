@@ -7,121 +7,93 @@ use crate::{
     stdio::{self},
 };
 
-#[repr(u32)]
-#[derive(FromPrimitive)]
-pub enum SyscallId {
-    SLEEP = 1,
-    PRINT = 2,
-    YIELD = 3,
-}
-
+#[derive(Debug)]
 #[repr(C)]
-struct SVCCallParams {
+pub struct SVCCallParams {
     pub r0: u32,
     pub r1: u32,
     pub r2: u32,
-    pub r3: u32,
-    pub syscall_id: u32,
+    pub r3: u32,        // Contains the exact function within the SyscallId
+    pub syscall_id: u8, // Contains the SyscallId
 }
 
-fn sys_sleep(duration: u32) -> i32 {
-    println!("Sleeping...");
-    Kerr::ENOSYS as i32
+// #[repr(C)]
+// pub struct SysCallResult(i32);
+
+// impl SysCallResult {
+//     pub const NO_SUCH_SYSCALL: SysCallResult = SysCallResult(Kerr::ENOSYS as i32);
+// }
+
+// impl From<i32> for SysCallResult {
+//     fn from(value: i32) -> Self {
+//         SysCallResult(value)
+//     }
+// }
+
+// impl Into<i32> for SysCallResult {
+//     fn into(self) -> i32 {
+//         self.0
+//     }
+// }
+
+#[repr(u8)]
+#[derive(FromPrimitive)]
+pub enum SyscallId {
+    Kernel = 1,
+    Io = 2,
+    Driver = 3,
 }
 
-#[no_mangle]
-extern "C" fn do_syscall(params: *const SVCCallParams) -> i32 {
-    let params = unsafe { &*params };
+#[repr(u32)]
+#[derive(FromPrimitive)]
+pub enum KernelSyscallId {
+    Yield = 0,
+    Sleep = 1,
+}
 
-    if let Some(syscall_id) = FromPrimitive::from_u32(params.syscall_id) {
-        match syscall_id {
-            SyscallId::SLEEP => sys_sleep(params.r0),
-            SyscallId::PRINT => {
-                let ptr = params.r0 as *const u8;
-                let len = params.r1 as usize;
+#[repr(u32)]
+#[derive(FromPrimitive)]
+pub enum IoSyscallId {
+    Print = 0,
+}
 
-                // rebuild &[u8] from (string and len)
-                let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
+#[derive(Debug)]
+pub enum Syscall {
+    Kernel(KernelSyscall),
+    Io(IoSyscall),
+    Driver,
+}
 
-                // Direct write
-                stdio::write_bytes(slice);
-                0
-            }
-            SyscallId::YIELD => {
-                println!("Yield...");
-                0
-            }
-        }
-    } else {
-        println!("Unknown syscall: {}", params.syscall_id);
-        0
+impl Syscall {
+    pub fn from_svc_params(params: SVCCallParams) -> Option<Syscall> {
+        SyscallId::from_u8(params.syscall_id).and_then(|syscall_id| match syscall_id {
+            SyscallId::Kernel => KernelSyscallId::from_u32(params.r3).map(|kernel_syscall| {
+                Syscall::Kernel(match kernel_syscall {
+                    KernelSyscallId::Yield => KernelSyscall::Yield,
+                    KernelSyscallId::Sleep => KernelSyscall::Sleep { ms: params.r0 },
+                })
+            }),
+            SyscallId::Io => IoSyscallId::from_u32(params.r3).map(|io_syscall| {
+                Syscall::Io(match io_syscall {
+                    IoSyscallId::Print => {
+                        let ptr = params.r0 as *const u8;
+                        let size = params.r1 as usize;
+                        IoSyscall::Print { ptr, len: size }
+                    }
+                })
+            }),
+            SyscallId::Driver => Some(Syscall::Driver),
+        })
     }
 }
 
-// global_asm!(
-//     "
-//     .section .text, \"ax\"
-//     .global z_svc
-//     .global do_syscall
-//     .thumb_func
-// z_svc:
-//     // At this point, the exception frame looks like this
-//     // sp + 00: r0 (syscall arg 0)
-//     // sp + 04: r1 (syscall arg 1)
-//     // sp + 08: r2 (syscall arg 2)
-//     // sp + 0C: r3 (syscall arg 3)
-//     // sp + 10: r12
-//     // sp + 14: lr
-//     // sp + 18: return address (instruction following the svc)
-//     // sp + 1C: xPSR
+#[derive(Debug)]
+pub enum KernelSyscall {
+    Yield,
+    Sleep { ms: u32 },
+}
 
-//     push {{r4, lr}}
-
-//     // Allocate space on the stack for SVCCallParams
-//     sub sp, sp, #20         // Allocate 20 bytes (5 * 4 bytes for r0, r1, r2, r3, syscall_id)
-
-//     // Store r0-r3 in the allocated stack space
-//     str r0, [sp, #0]        // params.r0 = r0
-//     str r1, [sp, #4]        // params.r1 = r1
-//     str r2, [sp, #8]        // params.r2 = r2
-//     str r3, [sp, #12]       // params.r3 = r3
-
-//     // Store r4 (syscall ID) in the allocated stack space
-//     str r4, [sp, #16]       // params.syscall_id = r4
-
-//     // Pass the pointer to params (sp) as an argument to do_syscall
-//     mov r0, sp              // r0 = params (stack pointer)
-
-//     // Call do_syscall function
-//     bl do_syscall
-
-//     // r0 contains do_syscall returned value
-
-//     // Clean up the stack
-//     add sp, sp, #20         // Deallocate the 20 bytes of stack space
-
-//     // Replace value of r0 in the exception stack frame, so that when the
-//     // exception returns. The return value of the syscall is automatically
-//     // set in r0
-//     str r0, [sp, #8]
-
-//     // At this point, the exception frame looks like this
-//     // sp + 00: next pc (old lr)
-//     // sp + 04: next r4 (old r4)
-//     // sp + 08: SYSCALL RETURN VALUE (old r0)
-//     // sp + 0C: r1 (syscall arg 1)
-//     // sp + 10: r2 (syscall arg 2)
-//     // sp + 14: r3 (syscall arg 3)
-//     // sp + 18: r12
-//     // sp + 1C: lr
-//     // sp + 20: return address (instruction following the svc)
-//     // sp + 24: xPSR
-
-//     // Return from the function
-//     pop {{r4, pc}}
-//     "
-// );
-
-// extern "C" {
-//     pub fn z_svc();
-// }
+#[derive(Debug)]
+pub enum IoSyscall {
+    Print { ptr: *const u8, len: usize },
+}

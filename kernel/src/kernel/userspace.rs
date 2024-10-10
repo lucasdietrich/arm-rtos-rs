@@ -2,49 +2,33 @@ use core::{arch::asm, ffi::c_void, fmt::Arguments, ptr};
 
 use super::syscalls::SyscallId;
 
-// Read A7.7.175 of DDI0403E_B_armv7m_arm.pdf
-// TODO how to read back svc value 0xbb -> read pc-4
-#[no_mangle]
-unsafe extern "C" fn z_call_svc_4(mut r0: u32, r1: u32, r2: u32, r3: u32, syscall_id: u32) -> i32 {
-    // TODO change this value "#0xbb"
+// Compiler update should do the job:
+//
+// Generic const is asm requires "#![feature(asm_const)]"
+pub unsafe fn z_call_svc_4<const SVC_NUM: u8>(mut r0: u32, r1: u32, r2: u32, r3: u32) -> i32 {
     asm!(
-        "
-        svc #0xbb
-    ",
-    inlateout("r0") r0, // is inout enough ?
-    in("r1") r1,
-    in("r2") r2,
-    in("r3") r3,
-
-    /* LLVM internally uses r6 which cannot be used in inline assembly
-     * For comparison: Zephyr (based on GCC/Clang) uses r6 for syscalls.
-     */
-    in("r4") syscall_id,
-
-    // Indication:
-    options(nostack, nomem),
+        "svc #{svc_num}",
+        svc_num = const SVC_NUM,
+        inlateout("r0") r0,
+        in("r1") r1,
+        in("r2") r2,
+        in("r3") r3,
+        options(nostack, nomem),
     );
-
     r0 as i32
 }
 
 pub fn k_svc_yield() -> i32 {
-    unsafe { z_call_svc_4(0, 0, 0, 0, SyscallId::YIELD as u32) }
+    unsafe { z_call_svc_4::<{ SyscallId::Kernel as u8 }>(0, 0, 0, 0) }
 }
 
 pub fn k_svc_sleep(ms: u32) -> i32 {
-    unsafe { z_call_svc_4(ms, 0, 0, 0, SyscallId::SLEEP as u32) }
+    unsafe { z_call_svc_4::<{ SyscallId::Kernel as u8 }>(0, 0, 0, 0) }
 }
 
 pub fn k_svc_print(string: &str) -> i32 {
     unsafe {
-        z_call_svc_4(
-            string.as_ptr() as u32,
-            string.len() as u32,
-            0,
-            0,
-            SyscallId::PRINT as u32,
-        )
+        z_call_svc_4::<{ SyscallId::Io as u8 }>(string.as_ptr() as u32, string.len() as u32, 0, 0)
     }
 }
 

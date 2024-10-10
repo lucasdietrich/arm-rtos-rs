@@ -83,6 +83,19 @@ TODO:
 
 ## Notes
 
+### Rust toolchain
+
+Tested with the following toolchains:
+
+- `nightly-2024-10-01`
+- `nightly-2024-07-08`
+
+To install a new toolchain:
+
+```
+rustup toolchain add nightly-2024-10-01 --profile minimal
+```
+
 ### Static and const
 
 ```rs
