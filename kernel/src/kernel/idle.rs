@@ -14,9 +14,9 @@ pub struct Idle;
 impl Idle {
     extern "C" fn idle_entry(arg0: *mut c_void) -> ! {
         loop {
-            // unsafe { __wfi() };
-
             // println!("[IDLE] interrupt");
+
+            unsafe { __wfi() };
 
             // userspace::k_svc_yield();
         }
