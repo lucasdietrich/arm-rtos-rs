@@ -40,13 +40,13 @@ impl<const Z: usize> Stack<Z> {
         unsafe { self.stack.as_mut_ptr().byte_add(align8_size) as *mut u32 }
     }
 
-    pub const fn init() -> Stack<Z> {
+    pub const fn zeroed() -> Stack<Z> {
         Stack {
             stack: MaybeUninit::new([0; Z]),
         }
     }
 
-    pub const unsafe fn uninit() -> Stack<Z> {
+    pub const fn uninit() -> Stack<Z> {
         Stack {
             stack: MaybeUninit::uninit(),
         }

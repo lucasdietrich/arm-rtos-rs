@@ -9,7 +9,7 @@ use super::{stack::Stack, thread::Thread, CpuVariant};
 pub const IDLE_STACK_SIZE: usize = 1024;
 
 #[link_section = ".noinit"]
-static mut IDLE_STACK: Stack<IDLE_STACK_SIZE> = Stack::init();
+static mut IDLE_STACK: Stack<IDLE_STACK_SIZE> = Stack::uninit();
 
 pub struct Idle;
 
