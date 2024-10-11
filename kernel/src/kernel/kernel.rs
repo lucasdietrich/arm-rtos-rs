@@ -30,7 +30,6 @@ pub enum SchedulerVerdict<'a, CPU: CpuVariant> {
 static mut Z_SYSCALL_FLAG: u32 = 0;
 
 // CPU: CPU variant
-#[repr(C)]
 pub struct Kernel<'a, CPU: CpuVariant> {
     tasks: list::List<'a, Thread<'a, CPU>>,
 
@@ -189,6 +188,11 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
     }
 
     fn sched_choose_next(&mut self) -> SchedulerVerdict<'a, CPU> {
+        // Pick any ready thread with maximum priority
+        // This naive scheduler may alway pick the same thread even if other
+        // threads of the same priority are ready. This can be improve by
+        // defining per-thread time slice and sharing CPU time using round-robin
+        // algorithm. This won't be implemented here.
         let thread_candidate = self
             .tasks
             .iter()

@@ -26,7 +26,7 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 ## Desired features
 
 - [ ] Architecture: (`thumbv7em-none-eabihf`), devices:
-    - [ ] mps2_an385 (ARM Cortex-M3 )
+    - [x] mps2_an385 (ARM Cortex-M3 )
     - [ ] stm32f4xx (ARM Cortex-M4)
 
 - [x] Cortex M3/M4 initialization
@@ -34,32 +34,32 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [x] Vector table
     - [x] Reset handler
     - [x] PendSV
-      - [ ] Configure lowest priority (0b111)
+      - [x] Configure lowest priority (0b111)
     - [x] SVCall
-      - [ ] Configure lowest priority (0b111)
+      - [x] Configure lowest priority (0b111)
     - [x] Systick
-      - [ ] Configure highest priority (0b000)
+      - [x] Configure highest priority (0b000)
     - [ ] Other interrupts
 - [ ] Peripherals:
     - [ ] UART
       - [x] mps2_an385
       - [ ] stm32f4xx
 - [ ] RTOS features:
-    - [ ] stacks
+    - [x] stacks
         - [x] system stack
+        - [x] user stack
         - [ ] irq stack
-        - [ ] user stack
-    - [ ] MSP/PSP
+    - [x] MSP/PSP
     - [x] thread switch (without FPU support)
     - [x] cooperative scheduling
-    - [ ] preemptive scheduling
-    - [ ] sleep
+    - [x] preemptive scheduling
+    - [x] sleep
     - [ ] mutex
     - [ ] semaphore
     - [ ] minimal drivers support for UART and GPIO
     - [x] syscalls:
         - [x] printf
-        - [ ] sleep
+        - [x] sleep
         - [ ] fork
         - [ ] mutex
         - [ ] semaphore 
@@ -240,4 +240,13 @@ impl<D: CsDomain> Cs<D> {
         }
     }
 }
+```
+
+### Mark as uninit
+
+Set variable in the `.noinit` section:
+
+```rs
+#[link_section = ".noinit"]
+static mut THREAD_STACK1: u32 = 0;
 ```

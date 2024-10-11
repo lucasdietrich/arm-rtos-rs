@@ -1,4 +1,4 @@
-use core::{ffi::c_void, fmt::Write, ptr::addr_of_mut};
+use core::{ffi::c_void, fmt::Write};
 
 use cortex_m::register::control::Control;
 use kernel::{
@@ -15,6 +15,8 @@ use kernel::{
 use kernel::{print, println};
 
 pub const FREQ_SYS_TICK: u32 = 100; // Hz
+
+const USER_THREAD_SIZE: usize = 16384;
 
 #[no_mangle]
 pub extern "C" fn _start() {
@@ -68,7 +70,7 @@ pub extern "C" fn _start() {
 
     // initialize task1
     #[link_section = ".noinit"]
-    static mut THREAD_STACK1: Stack<32768> = Stack::uninit();
+    static mut THREAD_STACK1: Stack<USER_THREAD_SIZE> = Stack::uninit();
 
     let stack1 = unsafe { THREAD_STACK1.get_info() };
     let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void, 0);
@@ -77,7 +79,7 @@ pub extern "C" fn _start() {
 
     // initialize task2
     #[link_section = ".noinit"]
-    static mut THREAD_STACK2: Stack<32768> = Stack::uninit();
+    static mut THREAD_STACK2: Stack<USER_THREAD_SIZE> = Stack::uninit();
 
     let stack2 = unsafe { THREAD_STACK2.get_info() };
     let task2 = Thread::init(&stack2, mytask_shell, 0xbbbb0000 as *mut c_void, 0);
@@ -86,7 +88,7 @@ pub extern "C" fn _start() {
 
     // initialize task3
     #[link_section = ".noinit"]
-    static mut THREAD_STACK3: Stack<32768> = Stack::uninit();
+    static mut THREAD_STACK3: Stack<USER_THREAD_SIZE> = Stack::uninit();
 
     let stack3 = unsafe { THREAD_STACK3.get_info() };
     let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void, 0);

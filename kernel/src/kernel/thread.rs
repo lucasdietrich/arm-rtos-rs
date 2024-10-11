@@ -16,13 +16,13 @@ pub enum PendingReason {
     // Waiting for synchronization object to become ready
     Sync(i32),
     // Waiting for synchronization object to become ready or timeout
-    SyncOrTimeout(i32, u64),
+    SyncWithTimeout(i32, u64),
 }
 
 impl PendingReason {
     pub fn get_timeout_ticks(&self) -> Option<u64> {
         match self {
-            PendingReason::SyncOrTimeout(.., timeout) | PendingReason::Timeout(timeout) => {
+            PendingReason::SyncWithTimeout(.., timeout) | PendingReason::Timeout(timeout) => {
                 Some(*timeout)
             }
             _ => None,
@@ -36,6 +36,8 @@ pub struct ThreadStats {
     pub syscalls: Cell<u32>,
 }
 
+// Thread priority model is the same as Zephyr RTOS:
+// read: <https://docs.zephyrproject.org/latest/kernel/services/threads/index.html#id12>
 #[repr(i32)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadPriority {
@@ -79,7 +81,6 @@ impl PartialOrd for ThreadPriority {
 /// The `Thread` struct uses `Cell` for certain fields to allow internal mutability, which
 /// is essential in contexts where the thread is referenced through the linked list it
 /// belongs to.
-#[repr(C)]
 pub struct Thread<'a, CPU: CpuVariant> {
     /// Stack pointer position for this thread when it is not actively running.
     ///

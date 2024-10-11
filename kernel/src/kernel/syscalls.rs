@@ -2,7 +2,6 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 #[derive(Debug)]
-#[repr(C)]
 pub struct SVCCallParams {
     pub r0: u32,
     pub r1: u32,
