@@ -114,7 +114,7 @@ pub unsafe extern "C" fn _reset_handler() {
     loop {}
 }
 
-pub fn reg_modify(reg: *mut u32, val: u32, mask: u32) {
+pub unsafe fn reg_modify(reg: *mut u32, val: u32, mask: u32) {
     unsafe {
         let reg_val = volatile_load(reg);
         volatile_store(reg, (reg_val & !mask) | val);

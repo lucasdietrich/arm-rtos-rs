@@ -13,10 +13,7 @@ use crate::{
     },
     list, println, stdio,
 };
-use core::{
-    ptr::{self, addr_of_mut, read_volatile, write_volatile},
-    u64,
-};
+use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
 
 pub enum SupervisorCallReason {
     Syscall(SVCCallParams),
@@ -62,17 +59,11 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
     }
 
     pub fn register_thread(&mut self, thread: &'a Thread<'a, CPU>) {
-        self.tasks.push_front(&thread);
+        self.tasks.push_front(thread);
         thread.state.set(super::thread::ThreadState::Running);
     }
 
-    pub fn print_tasks(&self) {
-        for task in self.tasks.iter() {
-            println!("{}", task);
-        }
-    }
-
-    pub fn increment_ticks(&mut self) {
+    fn increment_ticks(&mut self) {
         self.ticks += 1;
     }
 
@@ -194,24 +185,21 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
 
                 Some(0)
             }
-            _ => Some(Kerr::ENOSYS as i32),
+            _ => Some(-(Kerr::ENOSYS as i32)),
         }
     }
 
     fn sched_choose_next(&mut self) -> SchedulerVerdict<'a, CPU> {
-        // Order by priority + roll over available thread if there are multiple
-        let mut thread_candidate: Option<&Thread<'a, CPU>> = None;
-
-        for (index, thread) in self
+        let thread_candidate = self
             .tasks
             .iter()
             .filter(|thread| thread.is_ready())
-            .enumerate()
-        {
-            return SchedulerVerdict::RunProcess(thread);
-        }
+            .max_by_key(|thread| thread.priority);
 
-        SchedulerVerdict::Idle
+        match thread_candidate {
+            Some(candidate) => SchedulerVerdict::RunProcess(candidate),
+            None => SchedulerVerdict::Idle,
+        }
     }
 
     fn handle_interrupts(&mut self) {
@@ -219,13 +207,15 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         if self.systick.get_countflag() {
             self.increment_ticks();
 
+            let sys_ticks = self.get_ticks();
+
             // Check if any thread timed out
             for thread in self
                 .tasks
                 .iter()
                 .filter(|thread| thread.get_timeout_ticks().is_some())
             {
-                if self.get_ticks() >= thread.get_timeout_ticks().unwrap() {
+                if sys_ticks >= thread.get_timeout_ticks().unwrap() {
                     thread.set_ready();
                     unsafe {
                         thread.set_syscall_return_value_unchecked(-(Kerr::ETIMEDOUT as i32));
@@ -247,7 +237,7 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
                     let ret = if let Some(syscall) = Syscall::from_svc_params(syscall_params) {
                         self.do_syscall(process, syscall)
                     } else {
-                        Some(Kerr::ENOSYS as i32)
+                        Some(-(Kerr::ENOSYS as i32))
                     };
 
                     // Syscall completed, return value in user process stack in r0 register

@@ -1,15 +1,6 @@
-use super::{
-    stack::{Stack, StackInfo},
-    CpuVariant, InitStackFrameTrait, ThreadEntry,
-};
+use super::{stack::StackInfo, CpuVariant, InitStackFrameTrait, ThreadEntry};
 use crate::list::{self, Node};
-use core::{
-    cell::Cell,
-    ffi::c_void,
-    fmt::Display,
-    future::Pending,
-    ptr::{self, null_mut},
-};
+use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -55,6 +46,18 @@ impl ThreadPriority {
             ThreadPriority::Preemptive(priority) => *priority,
             ThreadPriority::Cooperative(priority) => *priority,
         }
+    }
+}
+
+impl Ord for ThreadPriority {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.raw_priority().cmp(&self.raw_priority())
+    }
+}
+
+impl PartialOrd for ThreadPriority {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -140,6 +143,10 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         matches!(self.state.get(), ThreadState::Running)
     }
 
+    pub fn is_preemptable(&self) -> bool {
+        matches!(self.priority, ThreadPriority::Preemptive(..))
+    }
+
     // Return time (in ticks) when the thread is schedulded for timeout
     pub fn get_timeout_ticks(&self) -> Option<u64> {
         match self.state.get() {
@@ -149,7 +156,7 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         }
     }
 
-    pub fn set_syscall_return_value(&self, ret: i32) {
+    pub fn set_syscall_return_value(&self, _ret: i32) {
         todo!()
     }
 

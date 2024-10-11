@@ -34,8 +34,6 @@ use core::ops::Deref;
 
 use volatile_register::{RW, WO};
 
-use crate::serial::SerialConfig;
-
 #[repr(C)]
 pub struct NVICRegs {
     /// Interrupt Set Enable Register

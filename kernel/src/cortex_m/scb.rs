@@ -1,6 +1,6 @@
 use core::ops::Deref;
 
-use volatile_register::{RO, RW, WO};
+use volatile_register::{RO, RW};
 
 use super::{irqn::SysIrqn, nvic::NVIC};
 

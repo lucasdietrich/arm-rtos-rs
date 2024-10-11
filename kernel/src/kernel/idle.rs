@@ -1,8 +1,10 @@
-use core::{arch::arm::__wfi, ffi::c_void, ptr};
+use core::{
+    arch::arm::__wfi,
+    ffi::c_void,
+    ptr::{self, addr_of_mut},
+};
 
-use crate::println;
-
-use super::{stack::Stack, thread::Thread, userspace, CpuVariant};
+use super::{stack::Stack, thread::Thread, CpuVariant};
 
 pub const IDLE_STACK_SIZE: usize = 1024;
 
@@ -12,24 +14,15 @@ static mut IDLE_STACK: Stack<IDLE_STACK_SIZE> = Stack::init();
 pub struct Idle;
 
 impl Idle {
-    extern "C" fn idle_entry(arg0: *mut c_void) -> ! {
+    extern "C" fn idle_entry(_arg0: *mut c_void) -> ! {
         loop {
-            // println!("[IDLE] interrupt");
-
             unsafe { __wfi() };
-
-            // userspace::k_svc_yield();
         }
     }
 
     pub fn init<'a, CPU: CpuVariant>() -> Thread<'a, CPU> {
-        let stack_info = unsafe { &mut IDLE_STACK }.get_info();
+        let stack_info = unsafe { &mut *addr_of_mut!(IDLE_STACK) }.get_info();
 
-        Thread::init(
-            &stack_info,
-            Self::idle_entry,
-            ptr::null_mut() as *mut c_void,
-            0,
-        )
+        Thread::init(&stack_info, Self::idle_entry, ptr::null_mut(), 0)
     }
 }

@@ -33,8 +33,7 @@ impl<const Z: usize> Stack<Z> {
     pub fn stack_end_ptr(&mut self) -> *mut u32 {
         // This guarentees the end stack pointer is 8 bytes aligned
         let align8_size = Z - (Z % 8);
-        let stack_end = unsafe { self.stack.as_mut_ptr().add(align8_size) } as *mut u32;
-        stack_end
+        unsafe { self.stack.as_mut_ptr().add(align8_size) as *mut u32 }
     }
 
     pub const fn init() -> Stack<Z> {

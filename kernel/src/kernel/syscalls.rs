@@ -1,12 +1,6 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use crate::{
-    kernel::errno::Kerr,
-    println,
-    stdio::{self},
-};
-
 #[derive(Debug)]
 #[repr(C)]
 pub struct SVCCallParams {

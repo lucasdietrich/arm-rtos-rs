@@ -1,4 +1,4 @@
-use core::{arch::asm, ffi::c_void, fmt::Arguments, ptr};
+use core::arch::asm;
 
 use super::syscalls::{IoSyscallId, KernelSyscallId, SyscallId};
 
@@ -18,15 +18,15 @@ pub unsafe fn z_call_svc_4<const SVC_NUM: u8>(mut r0: u32, r1: u32, r2: u32, r3:
     r0 as i32
 }
 
-pub fn k_svc_yield() -> i32 {
+pub fn k_yield() -> i32 {
     unsafe { z_call_svc_4::<{ SyscallId::Kernel as u8 }>(0, 0, 0, KernelSyscallId::Yield as u32) }
 }
 
-pub fn k_svc_sleep(ms: u32) -> i32 {
+pub fn k_sleep(ms: u32) -> i32 {
     unsafe { z_call_svc_4::<{ SyscallId::Kernel as u8 }>(ms, 0, 0, KernelSyscallId::Sleep as u32) }
 }
 
-pub fn k_svc_print(string: &str) -> i32 {
+pub fn k_print(string: &str) -> i32 {
     unsafe {
         z_call_svc_4::<{ SyscallId::Io as u8 }>(
             string.as_ptr() as u32,

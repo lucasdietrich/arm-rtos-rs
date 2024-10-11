@@ -6,12 +6,7 @@ use kernel::{
         arch::CortexM, cortex_m_rt::FCPU, cpu::Cpu, interrupts, irqn::SysIrqn, scb::SCB,
         systick::SysTick,
     },
-    kernel::{
-        kernel::Kernel,
-        stack::Stack,
-        thread::Thread,
-        userspace::{self, k_svc_print, k_svc_sleep, k_svc_yield},
-    },
+    kernel::{kernel::Kernel, stack::Stack, thread::Thread, userspace},
     serial::{SerialConfig, SerialTrait},
     serial_utils::Hex,
     soc::mps2_an385::{UartDevice, UART0},
@@ -85,7 +80,7 @@ pub extern "C" fn _start() {
     static mut THREAD_STACK2: Stack<32768> = Stack::init();
 
     let stack2 = unsafe { &mut THREAD_STACK2 }.get_info();
-    let task2 = Thread::init(&stack2, mytask_entry, 0xbbbb0000 as *mut c_void, 0);
+    let task2 = Thread::init(&stack2, mytask_shell, 0xbbbb0000 as *mut c_void, 0);
 
     kernel.register_thread(&task2);
 
@@ -113,22 +108,24 @@ extern "C" fn mytask_shell(arg: *mut c_void) -> ! {
             match byte {
                 b'y' => {
                     println!("yield !");
-                    userspace::k_svc_yield();
+                    userspace::k_yield();
                 }
                 b's' => {
                     println!("SVC sleep");
-                    syscall_ret = userspace::k_svc_sleep(1000);
+                    syscall_ret = userspace::k_sleep(1000);
                 }
                 b'w' => {
                     println!("SVC print");
                     let msg = "Hello using SVC !!\n";
-                    syscall_ret = userspace::k_svc_print(msg);
+                    syscall_ret = userspace::k_print(msg);
                 }
                 _ => {}
             }
 
             println!("syscall_ret: {}", Hex::U32(syscall_ret as u32));
         }
+
+        userspace::k_sleep(100);
     }
 }
 
@@ -146,7 +143,7 @@ extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
         println!("[{}] counter: {}", Hex::U32(arg as u32), Hex::U32(counter));
         counter = counter.wrapping_add(1);
 
-        let svc_ret = k_svc_sleep(1000);
+        let svc_ret = userspace::k_sleep(1000);
         println!("svc_ret: {}", svc_ret);
     }
 }
@@ -156,8 +153,8 @@ extern "C" fn mytask_entry3(arg: *mut c_void) -> ! {
         println!("MyTask arg: {}, sleep", Hex::U32(arg as u32),);
 
         let msg = "Hello using SVC !!\n";
-        k_svc_print(msg);
-        k_svc_sleep(1000);
+        userspace::k_print(msg);
+        userspace::k_sleep(1000);
     }
 }
 

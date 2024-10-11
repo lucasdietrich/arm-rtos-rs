@@ -2,8 +2,6 @@ use core::ops::Deref;
 
 use volatile_register::RW;
 
-use crate::timer::SchedulerTimer;
-
 use super::SCS_BASE;
 
 pub const SYSTICK_BASE: usize = SCS_BASE + 0x0010;
