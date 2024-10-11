@@ -1,19 +1,18 @@
-use super::{
-    idle::Idle,
-    syscalls::{KernelSyscall, SVCCallParams},
-    thread::Thread,
-    CpuVariant,
-};
+use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
+
 use crate::{
     cortex_m::systick::SysTick,
     kernel::{
         errno::Kerr,
+        idle::Idle,
         syscalls::{IoSyscall, Syscall},
+        syscalls::{KernelSyscall, SVCCallParams},
+        thread::Thread,
         thread::{PendingReason, ThreadState},
+        CpuVariant,
     },
     list, println, stdio,
 };
-use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
 
 pub enum SupervisorCallReason {
     Syscall(SVCCallParams),
@@ -71,7 +70,7 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         self.ticks
     }
 
-    fn switch_to(current: &Thread<'_, CPU>) -> SupervisorCallReason {
+    fn switch_to_process(current: &Thread<'_, CPU>) -> SupervisorCallReason {
         // Retrieve process last position of stack pointer
         let process_sp = current.stack_ptr.get();
 
@@ -213,13 +212,11 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
             for thread in self
                 .tasks
                 .iter()
-                .filter(|thread| thread.get_timeout_ticks().is_some())
+                .filter(|thread| thread.has_timed_out(sys_ticks))
             {
-                if sys_ticks >= thread.get_timeout_ticks().unwrap() {
-                    thread.set_ready();
-                    unsafe {
-                        thread.set_syscall_return_value_unchecked(-(Kerr::ETIMEDOUT as i32));
-                    }
+                thread.set_ready();
+                unsafe {
+                    thread.set_syscall_return_value_unchecked(-(Kerr::ETIMEDOUT as i32));
                 }
             }
         }
@@ -232,7 +229,7 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         match scheduler_verdict {
             // Switch to chosen user process
             // when returning from user process, we need to handle various events
-            SchedulerVerdict::RunProcess(process) => match Self::switch_to(process) {
+            SchedulerVerdict::RunProcess(process) => match Self::switch_to_process(process) {
                 SupervisorCallReason::Syscall(syscall_params) => unsafe {
                     let ret = if let Some(syscall) = Syscall::from_svc_params(syscall_params) {
                         self.do_syscall(process, syscall)
@@ -252,7 +249,7 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
                 }
             },
 
-            SchedulerVerdict::Idle => match Self::switch_to(&self.idle) {
+            SchedulerVerdict::Idle => match Self::switch_to_process(&self.idle) {
                 SupervisorCallReason::Interrupted => self.handle_interrupts(),
                 // Idle thread should never use syscalls
                 _ => panic!("IDLE fired syscall"),

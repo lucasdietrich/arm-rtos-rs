@@ -1,6 +1,6 @@
-use core::{arch::asm, ffi::c_void, fmt::Write, intrinsics, mem::MaybeUninit, ptr::addr_of_mut};
+use core::{ffi::c_void, fmt::Write, ptr::addr_of_mut};
 
-use cortex_m::{interrupt, register::control::Control};
+use cortex_m::register::control::Control;
 use kernel::{
     cortex_m::{
         arch::CortexM, cortex_m_rt::FCPU, cpu::Cpu, interrupts, irqn::SysIrqn, scb::SCB,
@@ -14,7 +14,7 @@ use kernel::{
 };
 use kernel::{print, println};
 
-pub const FreqSysTick: u32 = 100; // Hz
+pub const FREQ_SYS_TICK: u32 = 100; // Hz
 
 #[no_mangle]
 pub extern "C" fn _start() {
@@ -63,14 +63,14 @@ pub extern "C" fn _start() {
     // Initialize kernel
 
     // init kernel
-    let systick = SysTick::configure_period::<FCPU, FreqSysTick>(true);
+    let systick = SysTick::configure_period::<FCPU, FREQ_SYS_TICK>(true);
     let mut kernel = Kernel::<CortexM>::init(systick);
 
     // initialize task1
     #[link_section = ".noinit"]
     static mut THREAD_STACK1: Stack<32768> = Stack::init();
 
-    let stack1 = unsafe { &mut THREAD_STACK1 }.get_info();
+    let stack1 = unsafe { THREAD_STACK1.get_info() };
     let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void, 0);
 
     kernel.register_thread(&task1);
@@ -79,16 +79,16 @@ pub extern "C" fn _start() {
     #[link_section = ".noinit"]
     static mut THREAD_STACK2: Stack<32768> = Stack::init();
 
-    let stack2 = unsafe { &mut THREAD_STACK2 }.get_info();
+    let stack2 = unsafe { THREAD_STACK2.get_info() };
     let task2 = Thread::init(&stack2, mytask_shell, 0xbbbb0000 as *mut c_void, 0);
 
     kernel.register_thread(&task2);
 
     // initialize task3
     #[link_section = ".noinit"]
-    static mut THREAD_STACK3: Stack<32768> = Stack::init();
+    static mut THREAD_STACK3: Stack<32768> = unsafe { Stack::uninit() };
 
-    let stack3 = unsafe { &mut THREAD_STACK3 }.get_info();
+    let stack3 = unsafe { THREAD_STACK3.get_info() };
     let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void, 0);
 
     kernel.register_thread(&task3);
@@ -98,7 +98,7 @@ pub extern "C" fn _start() {
     }
 }
 
-extern "C" fn mytask_shell(arg: *mut c_void) -> ! {
+extern "C" fn mytask_shell(_arg: *mut c_void) -> ! {
     loop {
         if let Some(byte) = stdio::read() {
             println!("recv: {}", Hex::U8(byte));

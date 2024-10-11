@@ -16,8 +16,9 @@
             "postLaunchCommands": [
                 // "b mytask_entry",
                 // "b z_pendsv",
-                "b switch_to_user",
-                "b z_svc",
+                // "b switch_to_user",
+                // "b z_svc",
+                // "b z_systick"
                 // "b _fault_handler"
                 // "b _reset_handler",
             ]

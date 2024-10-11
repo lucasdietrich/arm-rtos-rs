@@ -19,6 +19,17 @@ pub enum PendingReason {
     SyncOrTimeout(i32, u64),
 }
 
+impl PendingReason {
+    pub fn get_timeout_ticks(&self) -> Option<u64> {
+        match self {
+            PendingReason::SyncOrTimeout(.., timeout) | PendingReason::Timeout(timeout) => {
+                Some(*timeout)
+            }
+            _ => None,
+        }
+    }
+}
+
 #[cfg(feature = "kernel-stats")]
 #[derive(Default)]
 pub struct ThreadStats {
@@ -61,7 +72,7 @@ impl PartialOrd for ThreadPriority {
     }
 }
 
-/// Represents a thread in a cooperative multitasking environment.
+/// Represents a thread in a multitasking environment.
 ///
 /// ## Design Details
 ///
@@ -150,10 +161,23 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     // Return time (in ticks) when the thread is schedulded for timeout
     pub fn get_timeout_ticks(&self) -> Option<u64> {
         match self.state.get() {
-            ThreadState::Pending(PendingReason::SyncOrTimeout(.., timeout)) => Some(timeout),
-            ThreadState::Pending(PendingReason::Timeout(timeout)) => Some(timeout),
+            ThreadState::Pending(reason) => reason.get_timeout_ticks(),
             _ => None,
         }
+    }
+
+    /// Determines if the thread has exceeded its scheduled timeout based on system ticks.
+    ///
+    /// # Arguments
+    /// * `sys_ticks` - The current system ticks count to compare against the timeout.
+    ///
+    /// # Returns
+    /// * `true` - If the timeout has expired
+    /// * `false` - If the timeout is still in the future or if no timeout is scheduled
+    pub fn has_timed_out(&self, sys_ticks: u64) -> bool {
+        self.get_timeout_ticks()
+            .map(|timeout_ticks| timeout_ticks <= sys_ticks)
+            .unwrap_or(false)
     }
 
     pub fn set_syscall_return_value(&self, _ret: i32) {

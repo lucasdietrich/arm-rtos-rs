@@ -1,3 +1,7 @@
+use core::mem::{self, MaybeUninit};
+
+use crate::{println, serial_utils::Hex};
+
 /// A fixed-size stack suitable
 ///
 /// The `Stack` struct represents a memory region that can be used as a stack for
@@ -22,7 +26,7 @@
 /// ```
 #[repr(C, align(8))]
 pub struct Stack<const Z: usize> {
-    stack: [u8; Z],
+    stack: MaybeUninit<[u8; Z]>,
 }
 
 impl<const Z: usize> Stack<Z> {
@@ -33,11 +37,19 @@ impl<const Z: usize> Stack<Z> {
     pub fn stack_end_ptr(&mut self) -> *mut u32 {
         // This guarentees the end stack pointer is 8 bytes aligned
         let align8_size = Z - (Z % 8);
-        unsafe { self.stack.as_mut_ptr().add(align8_size) as *mut u32 }
+        unsafe { self.stack.as_mut_ptr().byte_add(align8_size) as *mut u32 }
     }
 
     pub const fn init() -> Stack<Z> {
-        Stack { stack: [0; Z] }
+        Stack {
+            stack: MaybeUninit::new([0; Z]),
+        }
+    }
+
+    pub const unsafe fn uninit() -> Stack<Z> {
+        Stack {
+            stack: MaybeUninit::uninit(),
+        }
     }
 
     pub fn get_info(&mut self) -> StackInfo {
