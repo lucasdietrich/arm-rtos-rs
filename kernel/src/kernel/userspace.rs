@@ -1,10 +1,10 @@
 use core::arch::asm;
 
-use super::syscalls::{IoSyscallId, KernelSyscallId, SyscallId};
+use super::syscalls::{IoSyscallId, KernelSyscallId, SyncPrimitiveType, SyscallId};
 
 // Compiler update should do the job:
 //
-// Generic const is asm requires "#![feature(asm_const)]"
+// Generic const in asm requires "#![feature(asm_const)]"
 pub unsafe fn z_call_svc_4<const SVC_NUM: u8>(mut r0: u32, r1: u32, r2: u32, r3: u32) -> i32 {
     asm!(
         "svc #{svc_num}",
@@ -16,6 +16,10 @@ pub unsafe fn z_call_svc_4<const SVC_NUM: u8>(mut r0: u32, r1: u32, r2: u32, r3:
         options(nostack, nomem),
     );
     r0 as i32
+}
+
+pub unsafe fn z_call_svc_kernel_4(r0: u32, r1: u32, r2: u32, r3: u32) -> i32 {
+    z_call_svc_4::<{ SyscallId::Kernel as u8 }>(r0, r1, r2, r3)
 }
 
 pub fn k_yield() -> i32 {
@@ -35,6 +39,58 @@ pub fn k_print(string: &str) -> i32 {
             IoSyscallId::Print as u32,
         )
     }
+}
+
+pub fn k_sync_create() -> i32 {
+    unsafe {
+        z_call_svc_kernel_4(
+            0,
+            0,
+            SyncPrimitiveType::Sync as u32,
+            KernelSyscallId::SyncCreate as u32,
+        )
+    }
+}
+
+pub fn k_signal_create() -> i32 {
+    unsafe {
+        z_call_svc_kernel_4(
+            0,
+            0,
+            SyncPrimitiveType::Signal as u32,
+            KernelSyscallId::SyncCreate as u32,
+        )
+    }
+}
+
+pub fn k_semaphore_create(init: u32, max: u32) -> i32 {
+    unsafe {
+        z_call_svc_kernel_4(
+            init,
+            max,
+            SyncPrimitiveType::Semaphore as u32,
+            KernelSyscallId::SyncCreate as u32,
+        )
+    }
+}
+
+pub fn k_mutex_create() -> i32 {
+    unsafe {
+        z_call_svc_kernel_4(
+            0,
+            0,
+            SyncPrimitiveType::Mutex as u32,
+            KernelSyscallId::SyncCreate as u32,
+        )
+    }
+}
+
+pub fn k_sync(kobj: i32) -> i32 {
+    unsafe { z_call_svc_kernel_4(0, 0, kobj as u32, KernelSyscallId::Sync as u32) }
+}
+
+pub fn k_pend(kobj: i32) -> i32 {
+    unsafe { z_call_svc_kernel_4(0, 0, kobj as u32, KernelSyscallId::Pend as u32) }
 }
 
 // pub fn z_user_print(args: Arguments<'_>, nl: bool) {

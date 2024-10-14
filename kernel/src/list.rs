@@ -14,23 +14,43 @@ pub trait Node<'a, T: Node<'a, T>> {
 
 pub struct List<'a, T: Node<'a, T>> {
     head: Link<'a, T>,
+    tail: Link<'a, T>,
 }
 
 impl<'a, T: Node<'a, T>> List<'a, T> {
     pub const fn empty() -> List<'a, T> {
         List {
+            // head an tail must remain coherent together (either both None or both &Some)
             head: Link::empty(),
+            tail: Link::empty(),
         }
     }
 
     pub fn push_front(&mut self, node: &'a T) {
         node.next().0.set(self.head.0.get());
-        self.head.0.set(Some(node))
+        self.head.0.set(Some(node));
+        if self.tail.0.get().is_none() {
+            self.tail.0.set(Some(node));
+        }
+    }
+
+    pub fn push_back(&mut self, node: &'a T) {
+        node.next().0.set(None);
+        if let Some(old_tail) = self.tail.0.get() {
+            old_tail.next().0.set(Some(node));
+        } else {
+            self.head.0.set(Some(node));
+        }
+        self.tail.0.set(Some(node));
     }
 
     pub fn pop_head(&mut self) -> Option<&'a T> {
         self.head.0.get().map(|head| {
-            self.head.0.set(head.next().0.get());
+            let new_head = head.next().0.get();
+            self.head.0.set(new_head);
+            if new_head.is_none() {
+                self.tail.0.set(None);
+            }
             head
         })
     }

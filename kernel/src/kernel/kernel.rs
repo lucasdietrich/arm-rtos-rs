@@ -5,14 +5,14 @@ use crate::{
     kernel::{
         errno::Kerr,
         idle::Idle,
-        syscalls::{IoSyscall, Syscall},
-        syscalls::{KernelSyscall, SVCCallParams},
-        thread::Thread,
-        thread::{PendingReason, ThreadState},
+        syscalls::{IoSyscall, KernelSyscall, SVCCallParams, SyncPrimitiveCreate, Syscall},
+        thread::{PendingReason, Thread, ThreadState},
         CpuVariant,
     },
     list, println, stdio,
 };
+
+use super::sync::{sync::Sync, KernelObject};
 
 pub enum SupervisorCallReason {
     Syscall(SVCCallParams),
@@ -24,13 +24,18 @@ pub enum SchedulerVerdict<'a, CPU: CpuVariant> {
     Idle,
 }
 
+// requires generic_const?? ... unstable feature
+pub trait KernelSpec {
+    const KOBJS: u32;
+}
+
 /* This address must be accessible from asm */
 #[used]
 #[no_mangle]
 static mut Z_SYSCALL_FLAG: u32 = 0;
 
 // CPU: CPU variant
-pub struct Kernel<'a, CPU: CpuVariant> {
+pub struct Kernel<'a, CPU: CpuVariant, const KOBJS: usize> {
     tasks: list::List<'a, Thread<'a, CPU>>,
 
     // systick
@@ -41,10 +46,13 @@ pub struct Kernel<'a, CPU: CpuVariant> {
 
     // Idle thread
     idle: Thread<'a, CPU>,
+
+    // Kernel objects
+    kobj: [Option<KernelObject<'a, Sync, CPU>>; KOBJS],
 }
 
-impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
-    pub fn init(systick: SysTick) -> Kernel<'a, CPU> {
+impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
+    pub fn init(systick: SysTick) -> Kernel<'a, CPU, KOBJS> {
         let idle = Idle::init();
 
         Kernel {
@@ -53,6 +61,7 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
             systick,
             ticks: 0,
             idle,
+            kobj: [const { None }; KOBJS],
         }
     }
 
@@ -174,6 +183,43 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
                     None
                 }
             },
+            Syscall::Kernel(KernelSyscall::Create { prim }) => {
+                match prim {
+                    SyncPrimitiveCreate::Sync => {
+                        // first first unallocated kernel object in the list
+                        let result = self
+                            .kobj
+                            .iter_mut()
+                            .enumerate()
+                            .find_map(|(index, kobj)| {
+                                if kobj.is_none() {
+                                    kobj.replace(KernelObject::new(index as u32, Sync));
+                                    Some(index as i32)
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(-(Kerr::ENOMEM as i32));
+
+                        Some(result)
+                    }
+                    _ => None,
+                }
+            }
+            Syscall::Kernel(KernelSyscall::Sync { kobj }) => self
+                .kobj
+                .get_mut(kobj as usize)
+                .and_then(|obj_ref| obj_ref.as_mut())
+                .map(|kobj| {
+                    let _unpended_thread = kobj.sync(());
+                    0
+                })
+                .or(Some(-(Kerr::ENOENT as i32))),
+            Syscall::Kernel(KernelSyscall::Pend { kobj, timeout }) => self
+                .kobj
+                .get_mut(kobj as usize)
+                .and_then(|obj_ref| obj_ref.as_mut())
+                .and_then(|kobj| kobj.pend(thread, timeout).map(|_| 0)),
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
                 // rebuild &[u8] from (string and len)
                 let slice = core::slice::from_raw_parts(ptr, len);

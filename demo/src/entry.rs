@@ -62,38 +62,54 @@ pub extern "C" fn _start() {
 
     display_control_register();
 
-    // Initialize kernel
-
     // init kernel
     let systick = SysTick::configure_period::<FCPU, FREQ_SYS_TICK>(true);
-    let mut kernel = Kernel::<CortexM>::init(systick);
+    let mut kernel = Kernel::<CortexM, 32>::init(systick);
 
-    // initialize task1
+    // // initialize task1
+    // #[link_section = ".noinit"]
+    // static mut THREAD_STACK1: Stack<USER_THREAD_SIZE> = Stack::uninit();
+
+    // let stack1 = unsafe { THREAD_STACK1.get_info() };
+    // let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void, 0);
+
+    // kernel.register_thread(&task1);
+
+    // // initialize task2
+    // #[link_section = ".noinit"]
+    // static mut THREAD_STACK2: Stack<USER_THREAD_SIZE> = Stack::uninit();
+
+    // let stack2 = unsafe { THREAD_STACK2.get_info() };
+    // let task2 = Thread::init(&stack2, mytask_shell, 0xbbbb0000 as *mut c_void, 0);
+
+    // kernel.register_thread(&task2);
+
+    // // initialize task3
+    // #[link_section = ".noinit"]
+    // static mut THREAD_STACK3: Stack<USER_THREAD_SIZE> = Stack::uninit();
+
+    // let stack3 = unsafe { THREAD_STACK3.get_info() };
+    // let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void, 0);
+
+    // kernel.register_thread(&task3);
+
+    // initialize task4
     #[link_section = ".noinit"]
-    static mut THREAD_STACK1: Stack<USER_THREAD_SIZE> = Stack::uninit();
+    static mut THREAD_STACK4: Stack<USER_THREAD_SIZE> = Stack::uninit();
 
-    let stack1 = unsafe { THREAD_STACK1.get_info() };
-    let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void, 0);
+    let stack4 = unsafe { THREAD_STACK4.get_info() };
+    let task4 = Thread::init(&stack4, mytask_pend, 0xdddd0000 as *mut c_void, 0);
 
-    kernel.register_thread(&task1);
+    kernel.register_thread(&task4);
 
-    // initialize task2
+    // initialize task4
     #[link_section = ".noinit"]
-    static mut THREAD_STACK2: Stack<USER_THREAD_SIZE> = Stack::uninit();
+    static mut THREAD_STACK5: Stack<USER_THREAD_SIZE> = Stack::uninit();
 
-    let stack2 = unsafe { THREAD_STACK2.get_info() };
-    let task2 = Thread::init(&stack2, mytask_shell, 0xbbbb0000 as *mut c_void, 0);
+    let stack5 = unsafe { THREAD_STACK5.get_info() };
+    let task5 = Thread::init(&stack5, mytask_sync, 0xeeee0000 as *mut c_void, 0);
 
-    kernel.register_thread(&task2);
-
-    // initialize task3
-    #[link_section = ".noinit"]
-    static mut THREAD_STACK3: Stack<USER_THREAD_SIZE> = Stack::uninit();
-
-    let stack3 = unsafe { THREAD_STACK3.get_info() };
-    let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void, 0);
-
-    kernel.register_thread(&task3);
+    kernel.register_thread(&task5);
 
     loop {
         kernel.kernel_loop();
@@ -147,6 +163,30 @@ extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
 
         let svc_ret = userspace::k_sleep(1000);
         println!("svc_ret: {}", svc_ret);
+    }
+}
+
+extern "C" fn mytask_pend(arg: *mut c_void) -> ! {
+    let kobj = userspace::k_sync_create();
+    println!("kobj {}", kobj);
+
+    loop {
+        let ret = userspace::k_pend(kobj);
+        println!("pend {}", ret);
+
+        userspace::k_sleep(500);
+    }
+}
+
+extern "C" fn mytask_sync(arg: *mut c_void) -> ! {
+    let kobj = 0_i32;
+
+    userspace::k_sleep(2000);
+    let ret = userspace::k_sync(kobj);
+    println!("sync {}", ret);
+
+    loop {
+        userspace::k_sleep(10000);
     }
 }
 

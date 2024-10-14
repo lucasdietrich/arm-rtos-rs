@@ -1,6 +1,15 @@
-use super::{stack::StackInfo, CpuVariant, InitStackFrameTrait, ThreadEntry};
+use super::{
+    stack::StackInfo, sync::SyncNotifyValue, CpuVariant, InitStackFrameTrait, ThreadEntry,
+};
 use crate::list::{self, Node};
-use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};
+use core::{
+    cell::Cell,
+    cmp::Ordering,
+    ffi::c_void,
+    fmt::Display,
+    ptr,
+    time::{self, Duration},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -14,9 +23,9 @@ pub enum PendingReason {
     // waiting for timeout, wait until specified uptime is reached (in ticks)
     Timeout(u64),
     // Waiting for synchronization object to become ready
-    Sync(i32),
+    Sync(u32),
     // Waiting for synchronization object to become ready or timeout
-    SyncWithTimeout(i32, u64),
+    SyncWithTimeout(u32, u64),
 }
 
 impl PendingReason {
@@ -33,7 +42,7 @@ impl PendingReason {
 #[cfg(feature = "kernel-stats")]
 #[derive(Default)]
 pub struct ThreadStats {
-    pub syscalls: Cell<u32>,
+    pub(super) syscalls: Cell<u32>,
 }
 
 // Thread priority model is the same as Zephyr RTOS:
@@ -74,6 +83,21 @@ impl PartialOrd for ThreadPriority {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Timeout {
+    Duration(u32),
+    Forever,
+}
+
+impl From<Option<u32>> for Timeout {
+    fn from(value: Option<u32>) -> Self {
+        match value {
+            Some(timeout) => Timeout::Duration(timeout),
+            None => Timeout::Forever,
+        }
+    }
+}
+
 /// Represents a thread in a multitasking environment.
 ///
 /// ## Design Details
@@ -86,21 +110,21 @@ pub struct Thread<'a, CPU: CpuVariant> {
     ///
     /// This pointer is updated whenever the thread yields or is preempted,
     /// and it is restored when the thread resumes execution.
-    pub stack_ptr: Cell<*mut u32>,
+    pub(super) stack_ptr: Cell<*mut u32>,
 
     /// Snapshot of CPU register states when the thread last yielded the CPU.
     ///
     /// This context includes callee-saved registers that is preserved across
     /// thread switches, allowing the thread to continue from the exact point
     /// it left off.
-    pub context: Cell<CPU::CalleeContext>,
+    pub(super) context: Cell<CPU::CalleeContext>,
 
     /// Current state of the thread.
     ///
     /// Represents whether the thread is actively running, stopped, or pending
     /// in the scheduler. This state determines its availability and readiness
     /// for CPU execution.
-    pub state: Cell<ThreadState>,
+    pub(super) state: Cell<ThreadState>,
 
     /// Thread priority (preemptive/cooperative)
     pub priority: ThreadPriority,
@@ -109,10 +133,12 @@ pub struct Thread<'a, CPU: CpuVariant> {
     #[cfg(feature = "kernel-stats")]
     pub stats: ThreadStats,
 
-    /// Internal reference to the next thread in a linked list structure.
-    ///
-    /// This link is used to organize threads in a list.
+    /// This link is used to organize threads in kernel list of known threads
     next: list::Link<'a, Thread<'a, CPU>>,
+
+    /// This link is used to make the thread waiting for a synchronization object
+    /// by adding it to the queue of waiting thread for the object.
+    waitqueue_next: list::Link<'a, Thread<'a, CPU>>,
 }
 
 impl<'a, CPU: CpuVariant> Node<'a, Thread<'a, CPU>> for Thread<'a, CPU> {
@@ -134,10 +160,11 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     ) -> Self {
         let thread = Thread {
             stack_ptr: Cell::new(unsafe { stack.stack_end.sub(CPU::InitStackFrame::SIZE_WORDS) }),
-            next: list::Link::empty(),
             context: Cell::new(CPU::CalleeContext::default()),
             priority: ThreadPriority::from(raw_priority),
             state: Cell::new(ThreadState::Stopped),
+            next: list::Link::empty(),
+            waitqueue_next: list::Link::empty(),
             #[cfg(feature = "kernel-stats")]
             stats: ThreadStats::default(),
         };
@@ -149,6 +176,14 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
 
     pub fn set_ready(&self) {
         self.state.set(ThreadState::Running);
+    }
+
+    pub fn set_pending(&self, sync: u32, timeout: Timeout) {
+        let reason = match timeout {
+            Timeout::Duration(timeout) => PendingReason::SyncWithTimeout(sync, timeout),
+            Timeout::Forever => PendingReason::Sync(sync),
+        };
+        self.state.set(ThreadState::Pending(reason));
     }
 
     pub fn is_ready(&self) -> bool {
@@ -188,6 +223,14 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     // make sure a syscall is pending, otherwise it could breack the stack
     pub unsafe fn set_syscall_return_value_unchecked(&self, ret: i32) {
         ptr::write(self.stack_ptr.get().add(0), ret as u32);
+    }
+
+    pub fn unpend(&self, _notify_value: SyncNotifyValue) {
+        self.set_ready();
+        unsafe {
+            // TODO, might depend on notify_value
+            self.set_syscall_return_value_unchecked(0);
+        }
     }
 }
 

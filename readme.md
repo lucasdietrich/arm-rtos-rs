@@ -63,6 +63,10 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
         - [ ] fork
         - [ ] mutex
         - [ ] semaphore 
+        - [ ] memory allocation
+    - [ ] std library (allocator, collections, etc.)
+        - [ ] rust
+        - [ ] C
 - [ ] Minimal process: load an application from an elf file and run it
     - [ ] parse elf file
     - [ ] toolchain for build the application (C/Rust + linker script + relocation? + syscalls)
@@ -71,15 +75,11 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 
 TODO:
 
-- use SVC for syscalls
-- arm user vs system modes
-- user / system / irq ? and stacks
-- thread mode vs handler mode
-- Target triplet ? `thumbv7em-none-eabihf`, or maybe `thumbv7m-none-eabi` is enough ?
 - ~~understand why .data MYVAR is already initialized in QEMU~~ -> QEMU loads the .data section from the ELF file to RAM
 - ~~understand why .data .bss appears in the ELF file~~ -> QEMU loads the .bss section from the ELF file to RAM
 - Add the noinit section to the linker script
 - If symbol gets wiped out of the elf, gdb won't find it, we need to force the symbol to be kept in the elf file -> how to ? (e.g. _thread_switch)
+- Proper Systick/FCPU and FREQ_SYS_TICK handling
 
 ## Notes
 

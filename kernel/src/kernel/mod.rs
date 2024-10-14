@@ -4,6 +4,7 @@ pub mod errno;
 pub mod idle;
 pub mod kernel;
 pub mod stack;
+pub mod sync;
 pub mod syscalls;
 pub mod thread;
 pub mod userspace;
