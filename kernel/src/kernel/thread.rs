@@ -1,39 +1,52 @@
-use super::{stack::StackInfo, CpuVariant, InitStackFrameTrait, ThreadEntry};
-use crate::list::{self, Node};
-use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};
+use super::{
+    stack::StackInfo, sync::SwapData, timeout::Timeout, CpuVariant, InitStackFrameTrait,
+    ThreadEntry,
+};
+use crate::list::{self, singly_linked as sl};
+use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, future::Pending, ptr};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Stopped,
     Running,
-    Pending(PendingReason),
+    Pending(PendingContext),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum PendingReason {
-    // waiting for timeout, wait until specified uptime is reached (in ticks)
-    Timeout(u64),
-    // Waiting for synchronization object to become ready
-    Sync(i32),
-    // Waiting for synchronization object to become ready or timeout
-    SyncWithTimeout(i32, u64),
+pub struct PendingContext {
+    sync_kobj_index: Option<u32>,
+    timeout_instant: Option<u64>,
 }
 
-impl PendingReason {
-    pub fn get_timeout_ticks(&self) -> Option<u64> {
-        match self {
-            PendingReason::SyncWithTimeout(.., timeout) | PendingReason::Timeout(timeout) => {
-                Some(*timeout)
-            }
-            _ => None,
+pub struct Runqueue;
+impl list::Marker for Runqueue {}
+pub struct Waitqueue;
+impl list::Marker for Waitqueue {}
+
+impl PendingContext {
+    pub fn new_sync(sync_kobj_index: u32, timeout_instant: Option<u64>) -> PendingContext {
+        PendingContext {
+            sync_kobj_index: Some(sync_kobj_index),
+            timeout_instant,
         }
+    }
+
+    pub fn new_timeout(timeout_instant: Option<u64>) -> PendingContext {
+        PendingContext {
+            sync_kobj_index: None,
+            timeout_instant,
+        }
+    }
+
+    pub fn get_timeout(&self) -> Option<u64> {
+        self.timeout_instant
     }
 }
 
 #[cfg(feature = "kernel-stats")]
 #[derive(Default)]
 pub struct ThreadStats {
-    pub syscalls: Cell<u32>,
+    pub(super) syscalls: Cell<u32>,
 }
 
 // Thread priority model is the same as Zephyr RTOS:
@@ -86,38 +99,50 @@ pub struct Thread<'a, CPU: CpuVariant> {
     ///
     /// This pointer is updated whenever the thread yields or is preempted,
     /// and it is restored when the thread resumes execution.
-    pub stack_ptr: Cell<*mut u32>,
+    pub(super) stack_ptr: Cell<*mut u32>,
 
     /// Snapshot of CPU register states when the thread last yielded the CPU.
     ///
     /// This context includes callee-saved registers that is preserved across
     /// thread switches, allowing the thread to continue from the exact point
     /// it left off.
-    pub context: Cell<CPU::CalleeContext>,
+    pub(super) context: Cell<CPU::CalleeContext>,
 
     /// Current state of the thread.
     ///
     /// Represents whether the thread is actively running, stopped, or pending
     /// in the scheduler. This state determines its availability and readiness
     /// for CPU execution.
-    pub state: Cell<ThreadState>,
+    pub(super) state: Cell<ThreadState>,
 
     /// Thread priority (preemptive/cooperative)
     pub priority: ThreadPriority,
+
+    /// Data passed between threads during synchronization
+    pub swap_data: Cell<SwapData>,
 
     /// Stats for the current thread
     #[cfg(feature = "kernel-stats")]
     pub stats: ThreadStats,
 
-    /// Internal reference to the next thread in a linked list structure.
-    ///
-    /// This link is used to organize threads in a list.
-    next: list::Link<'a, Thread<'a, CPU>>,
+    /// This link is used to organize threads in kernel list of known threads
+    runqueue_next: sl::Link<'a, Thread<'a, CPU>, Runqueue>,
+
+    // TODO
+    /// This link is used to make the thread waiting for a synchronization object
+    /// by adding it to the queue of waiting thread for the object.
+    waitqueue_next: sl::Link<'a, Thread<'a, CPU>, Waitqueue>,
 }
 
-impl<'a, CPU: CpuVariant> Node<'a, Thread<'a, CPU>> for Thread<'a, CPU> {
-    fn next(&'a self) -> &'a list::Link<'a, Thread<'a, CPU>> {
-        &self.next
+impl<'a, CPU: CpuVariant> sl::Node<'a, Thread<'a, CPU>, Runqueue> for Thread<'a, CPU> {
+    fn next(&'a self) -> &'a sl::Link<'a, Thread<'a, CPU>, Runqueue> {
+        &self.runqueue_next
+    }
+}
+
+impl<'a, CPU: CpuVariant> sl::Node<'a, Thread<'a, CPU>, Waitqueue> for Thread<'a, CPU> {
+    fn next(&'a self) -> &'a sl::Link<'a, Thread<'a, CPU>, Waitqueue> {
+        &self.waitqueue_next
     }
 }
 
@@ -134,10 +159,12 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     ) -> Self {
         let thread = Thread {
             stack_ptr: Cell::new(unsafe { stack.stack_end.sub(CPU::InitStackFrame::SIZE_WORDS) }),
-            next: list::Link::empty(),
             context: Cell::new(CPU::CalleeContext::default()),
             priority: ThreadPriority::from(raw_priority),
             state: Cell::new(ThreadState::Stopped),
+            runqueue_next: sl::Link::empty(),
+            swap_data: Cell::new(SwapData::Empty),
+            waitqueue_next: sl::Link::empty(),
             #[cfg(feature = "kernel-stats")]
             stats: ThreadStats::default(),
         };
@@ -151,6 +178,14 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         self.state.set(ThreadState::Running);
     }
 
+    pub fn set_pending(&self, sync: u32, timeout_instant: Option<u64>) {
+        self.state
+            .set(ThreadState::Pending(PendingContext::new_sync(
+                sync,
+                timeout_instant,
+            )));
+    }
+
     pub fn is_ready(&self) -> bool {
         matches!(self.state.get(), ThreadState::Running)
     }
@@ -160,9 +195,9 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     }
 
     // Return time (in ticks) when the thread is schedulded for timeout
-    pub fn get_timeout_ticks(&self) -> Option<u64> {
+    pub fn get_timeout_instant(&self) -> Option<u64> {
         match self.state.get() {
-            ThreadState::Pending(reason) => reason.get_timeout_ticks(),
+            ThreadState::Pending(reason) => reason.get_timeout(),
             _ => None,
         }
     }
@@ -176,9 +211,19 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     /// * `true` - If the timeout has expired
     /// * `false` - If the timeout is still in the future or if no timeout is scheduled
     pub fn has_timed_out(&self, sys_ticks: u64) -> bool {
-        self.get_timeout_ticks()
+        self.get_timeout_instant()
             .map(|timeout_ticks| timeout_ticks <= sys_ticks)
             .unwrap_or(false)
+    }
+
+    pub fn lives_in_waitqueue(&self) -> Option<u32> {
+        match self.state.get() {
+            ThreadState::Pending(PendingContext {
+                sync_kobj_index: Some(sync_kobj_index),
+                ..
+            }) => Some(sync_kobj_index),
+            _ => None,
+        }
     }
 
     pub fn set_syscall_return_value(&self, _ret: i32) {
@@ -188,6 +233,15 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     // make sure a syscall is pending, otherwise it could breack the stack
     pub unsafe fn set_syscall_return_value_unchecked(&self, ret: i32) {
         ptr::write(self.stack_ptr.get().add(0), ret as u32);
+    }
+
+    pub fn unpend(&self, swap_data: SwapData) {
+        self.set_ready();
+        self.swap_data.set(swap_data);
+        unsafe {
+            // TODO, might depend on the released value
+            self.set_syscall_return_value_unchecked(0);
+        }
     }
 }
 

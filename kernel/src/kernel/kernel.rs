@@ -1,17 +1,31 @@
-use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
+use core::{
+    alloc::{Allocator, GlobalAlloc},
+    ptr::{self, addr_of_mut, read_volatile, write_volatile},
+    time,
+};
+
+use alloc::{alloc::Global, boxed::Box};
 
 use crate::{
     cortex_m::systick::SysTick,
     kernel::{
         errno::Kerr,
         idle::Idle,
-        syscalls::{IoSyscall, Syscall},
-        syscalls::{KernelSyscall, SVCCallParams},
-        thread::Thread,
-        thread::{PendingReason, ThreadState},
+        syscalls::{IoSyscall, KernelSyscall, SVCCallParams, SyncPrimitiveCreate, Syscall},
+        thread::{PendingContext, Thread, ThreadState},
+        timeout::Timeout,
         CpuVariant,
     },
-    list, println, stdio,
+    list::singly_linked as sl,
+    mem::pool::MemoryPool,
+    println, stdio,
+};
+
+use super::{
+    sync::{
+        sync::Sync, KernelObject, KernelObjectTrait, Mutex, Semaphore, SwapData, SyncPrimitive,
+    },
+    thread::Runqueue,
 };
 
 pub enum SupervisorCallReason {
@@ -24,14 +38,22 @@ pub enum SchedulerVerdict<'a, CPU: CpuVariant> {
     Idle,
 }
 
+// requires generic_const?? ... unstable feature
+pub trait KernelSpec {
+    const KOBJS: u32;
+}
+
+// Define the tick duration in milliseconds
+pub const MS_PER_TICK: u64 = 10;
+
 /* This address must be accessible from asm */
 #[used]
 #[no_mangle]
 static mut Z_SYSCALL_FLAG: u32 = 0;
 
 // CPU: CPU variant
-pub struct Kernel<'a, CPU: CpuVariant> {
-    tasks: list::List<'a, Thread<'a, CPU>>,
+pub struct Kernel<'a, CPU: CpuVariant, const KOBJS: usize> {
+    tasks: sl::List<'a, Thread<'a, CPU>, Runqueue>,
 
     // systick
     systick: SysTick,
@@ -41,18 +63,32 @@ pub struct Kernel<'a, CPU: CpuVariant> {
 
     // Idle thread
     idle: Thread<'a, CPU>,
+
+    // Kernel objects (Sync)
+    // ... other fields ...
+    // Storage for different types of kernel objects
+    // sync_objects: [Option<KernelObject<'a, Sync, CPU>>; KOBJS],
+    // mutex_objects: [Option<KernelObject<'a, Mutex<'a, CPU>, CPU>>; KOBJS],
+    // semaphore_objects: [Option<KernelObject<'a, Semaphore, CPU>>; KOBJS],
+
+    // sync_pool: MemoryPool<KernelObject<'a, Sync, CPU>, KOBJS>,
+    kobj: [Option<Box<dyn KernelObjectTrait<'a, CPU> + 'a>>; KOBJS],
 }
 
-impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
-    pub fn init(systick: SysTick) -> Kernel<'a, CPU> {
+impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
+    pub fn init(systick: SysTick) -> Kernel<'a, CPU, KOBJS> {
         let idle = Idle::init();
 
         Kernel {
-            tasks: list::List::empty(),
-            // timeout_queue: list::List::empty(),
+            tasks: sl::List::empty(),
             systick,
             ticks: 0,
             idle,
+            kobj: [const { None }; KOBJS],
+            // sync_pool: MemoryPool::init(),
+            // mutex_objects: [const { None }; KOBJS],
+            // semaphore_objects: [const { None }; KOBJS],
+            // sync_objects: [const { None }; KOBJS],
         }
     }
 
@@ -138,6 +174,48 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
         }
     }
 
+    fn create(&mut self, new_kobj_type: SyncPrimitiveCreate) -> Option<i32> {
+        match new_kobj_type {
+            SyncPrimitiveCreate::Sync => self
+                .kobj
+                .iter_mut()
+                .enumerate()
+                .find(|(_, slot)| slot.is_none())
+                .and_then(|(index, slot)| {
+                    Box::<KernelObject<'a, Sync, CPU>, Global>::try_new(KernelObject::new(
+                        index as u32,
+                        Sync,
+                    ))
+                    .map(|kobj| {
+                        *slot = Some(kobj);
+                        index as i32
+                    })
+                    .ok()
+                }),
+            _ => None,
+        }
+    }
+
+    fn acquire(
+        &mut self,
+        kobj: i32,
+        thread: &'a Thread<'a, CPU>,
+        ticks: u64,
+        timeout: Timeout,
+    ) -> Option<SwapData> {
+        self.kobj
+            .get_mut(kobj as usize)
+            .and_then(|obj_ref| obj_ref.as_mut())
+            .and_then(|kobj| kobj.acquire(thread, ticks, timeout))
+    }
+
+    fn notify_or_release(&mut self, kobj: i32, swap_data: SwapData) -> Option<i32> {
+        self.kobj
+            .get_mut(kobj as usize)
+            .and_then(|obj_ref| obj_ref.as_mut())
+            .and_then(|kobj| kobj.notify_or_release(swap_data))
+    }
+
     /// Handle the syscall from the thread
     ///
     /// Return Some(i32) value to return to the process, or None if the syscall
@@ -149,6 +227,8 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
     /// is not Some()
     unsafe fn do_syscall(&mut self, thread: &'a Thread<'a, CPU>, syscall: Syscall) -> Option<i32> {
         println!("{:?}", syscall);
+
+        let ticks = self.get_ticks();
 
         #[cfg(feature = "kernel-stats")]
         thread.stats.syscalls.set(thread.stats.syscalls.get() + 1);
@@ -163,17 +243,26 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
                 }
                 _ => {
                     // TODO replace 10 with the actual TICKS_PER_MSEC value
-                    let expiration_time = self.get_ticks() + (ms / 10) as u64;
+                    let expiration_time = self.get_ticks() + ms as u64 / MS_PER_TICK;
 
                     thread
                         .state
-                        .set(ThreadState::Pending(PendingReason::Timeout(
+                        .set(ThreadState::Pending(PendingContext::new_timeout(Some(
                             expiration_time,
-                        )));
+                        ))));
 
                     None
                 }
             },
+            Syscall::Kernel(KernelSyscall::Create { prim: create_prim }) => {
+                Self::create(self, create_prim)
+            }
+            Syscall::Kernel(KernelSyscall::Sync { kobj }) => {
+                Self::notify_or_release(self, kobj, ().into())
+            }
+            Syscall::Kernel(KernelSyscall::Pend { kobj, timeout }) => {
+                Self::acquire(self, kobj, thread, ticks, timeout).map(|_| 0)
+            }
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
                 // rebuild &[u8] from (string and len)
                 let slice = core::slice::from_raw_parts(ptr, len);
@@ -218,6 +307,14 @@ impl<'a, CPU: CpuVariant> Kernel<'a, CPU> {
                 .iter()
                 .filter(|thread| thread.has_timed_out(sys_ticks))
             {
+                // Remove the thread from the kobj waitqueue
+                if let Some(kobj_index) = thread.lives_in_waitqueue() {
+                    self.kobj
+                        .get_mut(kobj_index as usize)
+                        .and_then(|obj_ref| obj_ref.as_mut())
+                        .map(|kobj| kobj.remove_thread(thread));
+                }
+
                 thread.set_ready();
                 unsafe {
                     thread.set_syscall_return_value_unchecked(-(Kerr::ETIMEDOUT as i32));

@@ -2,7 +2,7 @@ use core::mem::{self, MaybeUninit};
 
 use crate::{println, serial_utils::Hex};
 
-/// A fixed-size stack suitable
+/// A fixed-size stack suitable for use as a task stack.
 ///
 /// The `Stack` struct represents a memory region that can be used as a stack for
 /// tasks. Use generic type `Z` to specify the size of the stack in bytes.

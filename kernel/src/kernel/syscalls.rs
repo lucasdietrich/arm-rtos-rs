@@ -1,5 +1,9 @@
+use core::time::Duration;
+
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+
+use super::{sync::SwapData, timeout::Timeout};
 
 #[derive(Debug)]
 pub struct SVCCallParams {
@@ -21,8 +25,18 @@ pub enum SyscallId {
 #[repr(u32)]
 #[derive(FromPrimitive)]
 pub enum KernelSyscallId {
+    // Yield CPU
     Yield = 0,
+    // Make thread sleep for the specified duration
     Sleep = 1,
+    // Create synchronization object
+    SyncCreate = 3,
+    // Synchronize (i.e.) first thread pending on a kernel object
+    Sync = 4,
+    // Make thread pend on a kernel object
+    Pend = 5,
+    // // Uptime
+    // Uptime = 6,
 }
 
 #[repr(u32)]
@@ -41,11 +55,40 @@ pub enum Syscall {
 impl Syscall {
     pub fn from_svc_params(params: SVCCallParams) -> Option<Syscall> {
         SyscallId::from_u8(params.syscall_id).and_then(|syscall_id| match syscall_id {
-            SyscallId::Kernel => KernelSyscallId::from_u32(params.r3).map(|kernel_syscall| {
-                Syscall::Kernel(match kernel_syscall {
-                    KernelSyscallId::Yield => KernelSyscall::Yield,
-                    KernelSyscallId::Sleep => KernelSyscall::Sleep { ms: params.r0 },
-                })
+            SyscallId::Kernel => KernelSyscallId::from_u32(params.r3).and_then(|kernel_syscall| {
+                match kernel_syscall {
+                    KernelSyscallId::Yield => Some(KernelSyscall::Yield),
+                    KernelSyscallId::Sleep => Some(KernelSyscall::Sleep { ms: params.r0 }),
+                    KernelSyscallId::SyncCreate => {
+                        SyncPrimitiveType::from_u32(params.r2).map(|sync_prim_type| {
+                            KernelSyscall::Create {
+                                prim: match sync_prim_type {
+                                    SyncPrimitiveType::Sync => SyncPrimitiveCreate::Sync,
+                                    SyncPrimitiveType::Signal => SyncPrimitiveCreate::Signal,
+                                    SyncPrimitiveType::Semaphore => {
+                                        SyncPrimitiveCreate::Semaphore {
+                                            init: params.r0,
+                                            max: params.r1,
+                                        }
+                                    }
+                                    SyncPrimitiveType::Mutex => SyncPrimitiveCreate::Mutex,
+                                },
+                            }
+                        })
+                    }
+                    KernelSyscallId::Sync => Some(KernelSyscall::Sync {
+                        kobj: params.r2 as i32,
+                    }),
+                    KernelSyscallId::Pend => Some(KernelSyscall::Pend {
+                        kobj: params.r2 as i32,
+                        timeout: if params.r1 == 0 {
+                            Timeout::Forever
+                        } else {
+                            Timeout::Duration(params.r0 as u64)
+                        },
+                    }),
+                }
+                .map(Syscall::Kernel)
             }),
             SyscallId::Io => IoSyscallId::from_u32(params.r3).map(|io_syscall| {
                 Syscall::Io(match io_syscall {
@@ -61,10 +104,30 @@ impl Syscall {
     }
 }
 
+#[repr(u32)]
+#[derive(Debug, FromPrimitive, PartialEq, Eq, Clone, Copy)]
+pub enum SyncPrimitiveType {
+    Sync = 0,
+    Signal = 1,
+    Semaphore = 2,
+    Mutex = 3,
+}
+
+#[derive(Debug)]
+pub enum SyncPrimitiveCreate {
+    Sync,
+    Signal,
+    Semaphore { init: u32, max: u32 },
+    Mutex,
+}
+
 #[derive(Debug)]
 pub enum KernelSyscall {
     Yield,
     Sleep { ms: u32 },
+    Create { prim: SyncPrimitiveCreate },
+    Sync { kobj: i32 },
+    Pend { kobj: i32, timeout: Timeout },
 }
 
 #[derive(Debug)]
