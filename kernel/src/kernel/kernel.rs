@@ -1,4 +1,7 @@
-use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
+use core::{
+    ptr::{self, addr_of_mut, read_volatile, write_volatile},
+    time,
+};
 
 use crate::{
     cortex_m::systick::SysTick,
@@ -6,13 +9,14 @@ use crate::{
         errno::Kerr,
         idle::Idle,
         syscalls::{IoSyscall, KernelSyscall, SVCCallParams, SyncPrimitiveCreate, Syscall},
-        thread::{PendingReason, Thread, ThreadState},
+        thread::{PendingContext, Thread, ThreadState},
+        timeout::Timeout,
         CpuVariant,
     },
     list, println, stdio,
 };
 
-use super::sync::{sync::Sync, KernelObject};
+use super::sync::{sync::Sync, KernelObject, Mutex, SyncPrimitiveTrait};
 
 pub enum SupervisorCallReason {
     Syscall(SVCCallParams),
@@ -28,6 +32,9 @@ pub enum SchedulerVerdict<'a, CPU: CpuVariant> {
 pub trait KernelSpec {
     const KOBJS: u32;
 }
+
+// Define the tick duration in milliseconds
+const MS_PER_TICK: u64 = 10;
 
 /* This address must be accessible from asm */
 #[used]
@@ -47,8 +54,11 @@ pub struct Kernel<'a, CPU: CpuVariant, const KOBJS: usize> {
     // Idle thread
     idle: Thread<'a, CPU>,
 
-    // Kernel objects
-    kobj: [Option<KernelObject<'a, Sync, CPU>>; KOBJS],
+    // Kernel objects (sync)
+    kobj_sync: [Option<KernelObject<'a, Sync, CPU>>; KOBJS],
+
+    // Kernel objects (Mutex)
+    kobj_mutex: [Option<KernelObject<'a, Mutex<'a, CPU>, CPU>>; KOBJS],
 }
 
 impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
@@ -61,7 +71,8 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             systick,
             ticks: 0,
             idle,
-            kobj: [const { None }; KOBJS],
+            kobj_sync: [const { None }; KOBJS],
+            kobj_mutex: [const { None }; KOBJS],
         }
     }
 
@@ -147,6 +158,41 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
         }
     }
 
+    fn sync<S: SyncPrimitiveTrait<'a, CPU>>(
+        objects: &mut [Option<KernelObject<'a, S, CPU>>],
+        kobj: i32,
+        notify_value: S::Swap,
+    ) -> Option<i32> {
+        objects
+            .get_mut(kobj as usize)
+            .and_then(|obj_ref| obj_ref.as_mut())
+            .map(|kobj| {
+                let _unpended_thread = kobj.sync(notify_value);
+                0
+            })
+            .or(Some(-(Kerr::ENOENT as i32)))
+    }
+
+    fn pend<S: SyncPrimitiveTrait<'a, CPU>>(
+        thread: &'a Thread<'a, CPU>,
+        objects: &mut [Option<KernelObject<'a, S, CPU>>],
+        kobj: i32,
+        ticks: u64,
+        timeout: Timeout,
+    ) -> Option<S::Swap> {
+        objects
+            .get_mut(kobj as usize)
+            .and_then(|obj_ref| obj_ref.as_mut())
+            .and_then(|kobj| {
+                // TODO replace 10 with the actual TICKS_PER_MSEC value
+                let expiration_time = timeout
+                    .get_ticks()
+                    .map(|timeout_ms| ticks + (timeout_ms / MS_PER_TICK) as u64);
+
+                kobj.pend(thread, expiration_time)
+            })
+    }
+
     /// Handle the syscall from the thread
     ///
     /// Return Some(i32) value to return to the process, or None if the syscall
@@ -158,6 +204,8 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
     /// is not Some()
     unsafe fn do_syscall(&mut self, thread: &'a Thread<'a, CPU>, syscall: Syscall) -> Option<i32> {
         println!("{:?}", syscall);
+
+        let ticks = self.get_ticks();
 
         #[cfg(feature = "kernel-stats")]
         thread.stats.syscalls.set(thread.stats.syscalls.get() + 1);
@@ -172,13 +220,13 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                 }
                 _ => {
                     // TODO replace 10 with the actual TICKS_PER_MSEC value
-                    let expiration_time = self.get_ticks() + (ms / 10) as u64;
+                    let expiration_time = self.get_ticks() + ms as u64 / MS_PER_TICK;
 
                     thread
                         .state
-                        .set(ThreadState::Pending(PendingReason::Timeout(
+                        .set(ThreadState::Pending(PendingContext::new_timeout(Some(
                             expiration_time,
-                        )));
+                        ))));
 
                     None
                 }
@@ -188,7 +236,7 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                     SyncPrimitiveCreate::Sync => {
                         // first first unallocated kernel object in the list
                         let result = self
-                            .kobj
+                            .kobj_sync
                             .iter_mut()
                             .enumerate()
                             .find_map(|(index, kobj)| {
@@ -206,20 +254,12 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                     _ => None,
                 }
             }
-            Syscall::Kernel(KernelSyscall::Sync { kobj }) => self
-                .kobj
-                .get_mut(kobj as usize)
-                .and_then(|obj_ref| obj_ref.as_mut())
-                .map(|kobj| {
-                    let _unpended_thread = kobj.sync(());
-                    0
-                })
-                .or(Some(-(Kerr::ENOENT as i32))),
-            Syscall::Kernel(KernelSyscall::Pend { kobj, timeout }) => self
-                .kobj
-                .get_mut(kobj as usize)
-                .and_then(|obj_ref| obj_ref.as_mut())
-                .and_then(|kobj| kobj.pend(thread, timeout).map(|_| 0)),
+            Syscall::Kernel(KernelSyscall::Sync { kobj }) => {
+                Self::sync(&mut self.kobj_sync, kobj, ())
+            }
+            Syscall::Kernel(KernelSyscall::Pend { kobj, timeout }) => {
+                Self::pend(thread, &mut self.kobj_sync, kobj, ticks, timeout).map(|_| 0)
+            }
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
                 // rebuild &[u8] from (string and len)
                 let slice = core::slice::from_raw_parts(ptr, len);

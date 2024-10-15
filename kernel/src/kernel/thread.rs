@@ -1,41 +1,40 @@
 use super::{
-    stack::StackInfo, sync::SyncNotifyValue, CpuVariant, InitStackFrameTrait, ThreadEntry,
+    stack::StackInfo, sync::SwapData, timeout::Timeout, CpuVariant, InitStackFrameTrait,
+    ThreadEntry,
 };
 use crate::list::{self, Node};
-use core::{
-    cell::Cell,
-    cmp::Ordering,
-    ffi::c_void,
-    fmt::Display,
-    ptr,
-    time::{self, Duration},
-};
+use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Stopped,
     Running,
-    Pending(PendingReason),
+    Pending(PendingContext),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum PendingReason {
-    // waiting for timeout, wait until specified uptime is reached (in ticks)
-    Timeout(u64),
-    // Waiting for synchronization object to become ready
-    Sync(u32),
-    // Waiting for synchronization object to become ready or timeout
-    SyncWithTimeout(u32, u64),
+pub struct PendingContext {
+    sync: Option<u32>,
+    timeout_instant: Option<u64>,
 }
 
-impl PendingReason {
-    pub fn get_timeout_ticks(&self) -> Option<u64> {
-        match self {
-            PendingReason::SyncWithTimeout(.., timeout) | PendingReason::Timeout(timeout) => {
-                Some(*timeout)
-            }
-            _ => None,
+impl PendingContext {
+    pub fn new_sync(sync: u32, timeout_instant: Option<u64>) -> PendingContext {
+        PendingContext {
+            sync: Some(sync),
+            timeout_instant,
         }
+    }
+
+    pub fn new_timeout(timeout_instant: Option<u64>) -> PendingContext {
+        PendingContext {
+            sync: None,
+            timeout_instant,
+        }
+    }
+
+    pub fn get_timeout(&self) -> Option<u64> {
+        self.timeout_instant
     }
 }
 
@@ -83,21 +82,6 @@ impl PartialOrd for ThreadPriority {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Timeout {
-    Duration(u32),
-    Forever,
-}
-
-impl From<Option<u32>> for Timeout {
-    fn from(value: Option<u32>) -> Self {
-        match value {
-            Some(timeout) => Timeout::Duration(timeout),
-            None => Timeout::Forever,
-        }
-    }
-}
-
 /// Represents a thread in a multitasking environment.
 ///
 /// ## Design Details
@@ -136,6 +120,7 @@ pub struct Thread<'a, CPU: CpuVariant> {
     /// This link is used to organize threads in kernel list of known threads
     next: list::Link<'a, Thread<'a, CPU>>,
 
+    // TODO
     /// This link is used to make the thread waiting for a synchronization object
     /// by adding it to the queue of waiting thread for the object.
     waitqueue_next: list::Link<'a, Thread<'a, CPU>>,
@@ -178,12 +163,12 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         self.state.set(ThreadState::Running);
     }
 
-    pub fn set_pending(&self, sync: u32, timeout: Timeout) {
-        let reason = match timeout {
-            Timeout::Duration(timeout) => PendingReason::SyncWithTimeout(sync, timeout),
-            Timeout::Forever => PendingReason::Sync(sync),
-        };
-        self.state.set(ThreadState::Pending(reason));
+    pub fn set_pending(&self, sync: u32, timeout_instant: Option<u64>) {
+        self.state
+            .set(ThreadState::Pending(PendingContext::new_sync(
+                sync,
+                timeout_instant,
+            )));
     }
 
     pub fn is_ready(&self) -> bool {
@@ -195,9 +180,9 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     }
 
     // Return time (in ticks) when the thread is schedulded for timeout
-    pub fn get_timeout_ticks(&self) -> Option<u64> {
+    pub fn get_timeout_instant(&self) -> Option<u64> {
         match self.state.get() {
-            ThreadState::Pending(reason) => reason.get_timeout_ticks(),
+            ThreadState::Pending(reason) => reason.get_timeout(),
             _ => None,
         }
     }
@@ -211,7 +196,7 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     /// * `true` - If the timeout has expired
     /// * `false` - If the timeout is still in the future or if no timeout is scheduled
     pub fn has_timed_out(&self, sys_ticks: u64) -> bool {
-        self.get_timeout_ticks()
+        self.get_timeout_instant()
             .map(|timeout_ticks| timeout_ticks <= sys_ticks)
             .unwrap_or(false)
     }
@@ -225,7 +210,7 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         ptr::write(self.stack_ptr.get().add(0), ret as u32);
     }
 
-    pub fn unpend(&self, _notify_value: SyncNotifyValue) {
+    pub fn unpend(&self, _notify_value: SwapData) {
         self.set_ready();
         unsafe {
             // TODO, might depend on notify_value

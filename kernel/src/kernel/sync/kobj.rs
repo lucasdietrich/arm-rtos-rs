@@ -1,25 +1,14 @@
 use crate::{
-    kernel::{
-        thread::{Thread, Timeout},
-        CpuVariant,
-    },
+    kernel::{thread::Thread, timeout::Timeout, CpuVariant},
     list,
 };
 
-use super::{mutex, sem, signal, sync, SyncPrimitiveTrait};
+use super::SyncPrimitiveTrait;
 
-pub enum SyncNotifyValue {
-    Sync,
+pub enum SwapData {
+    Empty,
     Signal(u32),
-    Semaphore,
-    Mutex,
-}
-
-pub enum SyncPrimitive<'a, CPU: CpuVariant> {
-    Sync(sync::Sync),
-    Signal(signal::Signal),
-    Semaphore(sem::Semaphore),
-    Mutex(mutex::Mutex<'a, CPU>),
+    Ownership,
 }
 
 pub struct KernelObject<'a, S: SyncPrimitiveTrait<'a, CPU>, CPU: CpuVariant> {
@@ -37,21 +26,25 @@ impl<'a, S: SyncPrimitiveTrait<'a, CPU>, CPU: CpuVariant> KernelObject<'a, S, CP
         }
     }
 
-    pub fn sync(&mut self, notify_value: S::Notify) -> Option<&'a Thread<'a, CPU>> {
-        let unpend_thread = self.waitqueue.pop_head();
-
-        let result = self.primitive.sync(unpend_thread, notify_value);
-
-        unpend_thread.map(|thread| thread.unpend(SyncNotifyValue::Sync));
-
-        unpend_thread
+    pub fn sync(&mut self, swap: S::Swap) -> Option<&'a Thread<'a, CPU>> {
+        let unpended_thread = self.waitqueue.pop_head();
+        if let Some(thread) = unpended_thread {
+            thread.unpend(swap.into())
+        } else {
+            self.primitive.sync(swap);
+        }
+        unpended_thread
     }
 
-    pub fn pend(&mut self, thread: &'a Thread<'a, CPU>, timeout: Timeout) -> Option<S::Notify> {
+    pub fn pend(
+        &mut self,
+        thread: &'a Thread<'a, CPU>,
+        timeout_instant: Option<u64>,
+    ) -> Option<S::Swap> {
         let result = self.primitive.pend(thread);
         if result.is_none() {
             self.waitqueue.push_back(thread);
-            thread.set_pending(self.identifier, timeout);
+            thread.set_pending(self.identifier, timeout_instant);
         }
         result
     }

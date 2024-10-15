@@ -7,6 +7,7 @@ pub mod stack;
 pub mod sync;
 pub mod syscalls;
 pub mod thread;
+pub mod timeout;
 pub mod userspace;
 
 // This function can be naked as it will never return !

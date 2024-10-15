@@ -5,9 +5,9 @@ use super::traits::SyncPrimitiveTrait;
 pub struct Sync;
 
 impl<'a, CPU: CpuVariant> SyncPrimitiveTrait<'a, CPU> for Sync {
-    type Notify = ();
+    type Swap = ();
 
-    fn sync(&mut self, _thread: Option<&'a Thread<'a, CPU>>, _notify_value: ()) {}
+    fn sync(&mut self, _notify_value: ()) {}
 
     fn pend(&mut self, _thread: &'a Thread<'a, CPU>) -> Option<()> {
         None

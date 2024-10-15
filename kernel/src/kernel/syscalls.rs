@@ -3,7 +3,7 @@ use core::time::Duration;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use super::thread::Timeout;
+use super::timeout::Timeout;
 
 #[derive(Debug)]
 pub struct SVCCallParams {
@@ -84,7 +84,7 @@ impl Syscall {
                         timeout: if params.r1 == 0 {
                             Timeout::Forever
                         } else {
-                            Timeout::Duration(params.r0)
+                            Timeout::Duration(params.r0 as u64)
                         },
                     }),
                 }

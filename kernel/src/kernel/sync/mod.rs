@@ -12,4 +12,4 @@ pub use signal::Signal;
 
 pub use traits::SyncPrimitiveTrait;
 
-pub use kobj::{KernelObject, SyncNotifyValue};
+pub use kobj::{KernelObject, SwapData};

@@ -1,15 +1,21 @@
 use crate::kernel::{thread::Thread, CpuVariant};
 
-use super::SyncPrimitiveTrait;
+use super::{SwapData, SyncPrimitiveTrait};
+
+impl Into<SwapData> for u32 {
+    fn into(self) -> SwapData {
+        SwapData::Signal(self)
+    }
+}
 
 pub struct Signal {
     value: Option<u32>,
 }
 
 impl<'a, CPU: CpuVariant> SyncPrimitiveTrait<'a, CPU> for Signal {
-    type Notify = u32;
+    type Swap = u32;
 
-    fn sync(&mut self, _thread: Option<&'a Thread<'a, CPU>>, notify_value: u32) {
+    fn sync(&mut self, notify_value: u32) {
         self.value = Some(notify_value);
     }
 
