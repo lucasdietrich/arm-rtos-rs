@@ -1,6 +1,6 @@
 use crate::kernel::{thread::Thread, CpuVariant};
 
-use super::{SwapData, SyncPrimitiveTrait};
+use super::{SwapData, SyncPrimitive};
 
 impl Into<SwapData> for u32 {
     fn into(self) -> SwapData {
@@ -12,14 +12,14 @@ pub struct Signal {
     value: Option<u32>,
 }
 
-impl<'a, CPU: CpuVariant> SyncPrimitiveTrait<'a, CPU> for Signal {
+impl<'a, CPU: CpuVariant> SyncPrimitive<'a, CPU> for Signal {
     type Swap = u32;
 
-    fn sync(&mut self, notify_value: u32) {
+    fn release(&mut self, notify_value: u32) {
         self.value = Some(notify_value);
     }
 
-    fn pend(&mut self, _thread: &'a Thread<'a, CPU>) -> Option<u32> {
+    fn acquire(&mut self, _thread: &'a Thread<'a, CPU>) -> Option<u32> {
         self.value
     }
 }

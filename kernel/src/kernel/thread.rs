@@ -229,7 +229,7 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         self.set_ready();
         self.swap_data.set(swap_data);
         unsafe {
-            // TODO, might depend on notify_value
+            // TODO, might depend on the released value
             self.set_syscall_return_value_unchecked(0);
         }
     }

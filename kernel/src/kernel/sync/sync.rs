@@ -1,15 +1,15 @@
 use crate::kernel::{thread::Thread, CpuVariant};
 
-use super::traits::SyncPrimitiveTrait;
+use super::traits::SyncPrimitive;
 
 pub struct Sync;
 
-impl<'a, CPU: CpuVariant> SyncPrimitiveTrait<'a, CPU> for Sync {
+impl<'a, CPU: CpuVariant> SyncPrimitive<'a, CPU> for Sync {
     type Swap = ();
 
-    fn sync(&mut self, _notify_value: ()) {}
+    fn release(&mut self, _released: ()) {}
 
-    fn pend(&mut self, _thread: &'a Thread<'a, CPU>) -> Option<()> {
+    fn acquire(&mut self, _thread: &'a Thread<'a, CPU>) -> Option<()> {
         None
     }
 }

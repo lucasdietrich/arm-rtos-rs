@@ -10,6 +10,6 @@ pub use mutex::Mutex;
 pub use sem::Semaphore;
 pub use signal::Signal;
 
-pub use traits::SyncPrimitiveTrait;
+pub use traits::SyncPrimitive;
 
 pub use kobj::{KernelObject, SwapData};

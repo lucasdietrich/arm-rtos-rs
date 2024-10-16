@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::{
-    sync::{sync::Sync, KernelObject, Mutex, SyncPrimitiveTrait},
+    sync::{sync::Sync, KernelObject, Mutex, SyncPrimitive},
     thread::Runqueue,
 };
 
@@ -161,7 +161,7 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
         }
     }
 
-    fn sync<S: SyncPrimitiveTrait<'a, CPU>>(
+    fn release<S: SyncPrimitive<'a, CPU>>(
         objects: &mut [Option<KernelObject<'a, S, CPU>>],
         kobj: i32,
         swap_data: S::Swap,
@@ -170,13 +170,13 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             .get_mut(kobj as usize)
             .and_then(|obj_ref| obj_ref.as_mut())
             .map(|kobj| {
-                let _unpended_thread = kobj.sync(swap_data);
+                let _unpended_thread = kobj.release(swap_data);
                 0
             })
             .or(Some(-(Kerr::ENOENT as i32)))
     }
 
-    fn pend<S: SyncPrimitiveTrait<'a, CPU>>(
+    fn acquire<S: SyncPrimitive<'a, CPU>>(
         thread: &'a Thread<'a, CPU>,
         objects: &mut [Option<KernelObject<'a, S, CPU>>],
         kobj: i32,
@@ -192,7 +192,7 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                     .get_ticks()
                     .map(|timeout_ms| ticks + (timeout_ms / MS_PER_TICK) as u64);
 
-                kobj.pend(thread, expiration_time)
+                kobj.acquire(thread, expiration_time)
             })
     }
 
@@ -258,10 +258,10 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                 }
             }
             Syscall::Kernel(KernelSyscall::Sync { kobj }) => {
-                Self::sync(&mut self.kobj_sync, kobj, ())
+                Self::release(&mut self.kobj_sync, kobj, ())
             }
             Syscall::Kernel(KernelSyscall::Pend { kobj, timeout }) => {
-                Self::pend(thread, &mut self.kobj_sync, kobj, ticks, timeout).map(|_| 0)
+                Self::acquire(thread, &mut self.kobj_sync, kobj, ticks, timeout).map(|_| 0)
             }
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
                 // rebuild &[u8] from (string and len)
@@ -307,6 +307,9 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                 .iter()
                 .filter(|thread| thread.has_timed_out(sys_ticks))
             {
+                // TODO: Remove the thread from the waitqueue,
+                // otherwise it will be notified if the object becomes ready
+
                 thread.set_ready();
                 unsafe {
                     thread.set_syscall_return_value_unchecked(-(Kerr::ETIMEDOUT as i32));

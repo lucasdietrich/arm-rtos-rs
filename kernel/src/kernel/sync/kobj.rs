@@ -6,7 +6,7 @@ use crate::{
     list,
 };
 
-use super::SyncPrimitiveTrait;
+use super::SyncPrimitive;
 
 pub enum SwapData {
     Empty,
@@ -14,13 +14,13 @@ pub enum SwapData {
     Ownership,
 }
 
-pub struct KernelObject<'a, S: SyncPrimitiveTrait<'a, CPU>, CPU: CpuVariant> {
+pub struct KernelObject<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> {
     identifier: u32,
     waitqueue: list::List<'a, Thread<'a, CPU>, Waitqueue>,
     primitive: S,
 }
 
-impl<'a, S: SyncPrimitiveTrait<'a, CPU>, CPU: CpuVariant> KernelObject<'a, S, CPU> {
+impl<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> KernelObject<'a, S, CPU> {
     pub fn new(identifier: u32, primitive: S) -> Self {
         KernelObject {
             identifier: identifier,
@@ -29,26 +29,30 @@ impl<'a, S: SyncPrimitiveTrait<'a, CPU>, CPU: CpuVariant> KernelObject<'a, S, CP
         }
     }
 
-    pub fn sync(&mut self, swap: S::Swap) -> Option<&'a Thread<'a, CPU>> {
+    pub fn release(&mut self, swap: S::Swap) -> Option<&'a Thread<'a, CPU>> {
         let unpended_thread = self.waitqueue.pop_head();
         if let Some(thread) = unpended_thread {
             thread.unpend(swap.into())
         } else {
-            self.primitive.sync(swap);
+            self.primitive.release(swap);
         }
         unpended_thread
     }
 
-    pub fn pend(
+    pub fn acquire(
         &mut self,
         thread: &'a Thread<'a, CPU>,
         timeout_instant: Option<u64>,
     ) -> Option<S::Swap> {
-        let result = self.primitive.pend(thread);
-        if result.is_none() {
+        let obtained = self.primitive.acquire(thread);
+        if obtained.is_none() {
+            // If the object is not available, make the thread pending on it by
+            // appending it at the end of the waitqueue.
             self.waitqueue.push_back(thread);
+
+            // Mark the thread pending until the given instant
             thread.set_pending(self.identifier, timeout_instant);
         }
-        result
+        obtained
     }
 }
