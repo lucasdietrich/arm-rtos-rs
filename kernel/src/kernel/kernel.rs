@@ -16,7 +16,10 @@ use crate::{
     list, println, stdio,
 };
 
-use super::sync::{sync::Sync, KernelObject, Mutex, SyncPrimitiveTrait};
+use super::{
+    sync::{sync::Sync, KernelObject, Mutex, SyncPrimitiveTrait},
+    thread::Runqueue,
+};
 
 pub enum SupervisorCallReason {
     Syscall(SVCCallParams),
@@ -43,7 +46,7 @@ static mut Z_SYSCALL_FLAG: u32 = 0;
 
 // CPU: CPU variant
 pub struct Kernel<'a, CPU: CpuVariant, const KOBJS: usize> {
-    tasks: list::List<'a, Thread<'a, CPU>>,
+    tasks: list::List<'a, Thread<'a, CPU>, Runqueue>,
 
     // systick
     systick: SysTick,
@@ -161,13 +164,13 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
     fn sync<S: SyncPrimitiveTrait<'a, CPU>>(
         objects: &mut [Option<KernelObject<'a, S, CPU>>],
         kobj: i32,
-        notify_value: S::Swap,
+        swap_data: S::Swap,
     ) -> Option<i32> {
         objects
             .get_mut(kobj as usize)
             .and_then(|obj_ref| obj_ref.as_mut())
             .map(|kobj| {
-                let _unpended_thread = kobj.sync(notify_value);
+                let _unpended_thread = kobj.sync(swap_data);
                 0
             })
             .or(Some(-(Kerr::ENOENT as i32)))

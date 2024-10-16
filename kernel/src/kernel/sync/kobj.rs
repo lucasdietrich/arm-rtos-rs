@@ -1,5 +1,8 @@
 use crate::{
-    kernel::{thread::Thread, timeout::Timeout, CpuVariant},
+    kernel::{
+        thread::{Thread, Waitqueue},
+        CpuVariant,
+    },
     list,
 };
 
@@ -13,7 +16,7 @@ pub enum SwapData {
 
 pub struct KernelObject<'a, S: SyncPrimitiveTrait<'a, CPU>, CPU: CpuVariant> {
     identifier: u32,
-    waitqueue: list::List<'a, Thread<'a, CPU>>,
+    waitqueue: list::List<'a, Thread<'a, CPU>, Waitqueue>,
     primitive: S,
 }
 

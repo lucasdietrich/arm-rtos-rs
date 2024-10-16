@@ -18,6 +18,11 @@ pub struct PendingContext {
     timeout_instant: Option<u64>,
 }
 
+pub struct Runqueue;
+impl list::Marker for Runqueue {}
+pub struct Waitqueue;
+impl list::Marker for Waitqueue {}
+
 impl PendingContext {
     pub fn new_sync(sync: u32, timeout_instant: Option<u64>) -> PendingContext {
         PendingContext {
@@ -113,22 +118,31 @@ pub struct Thread<'a, CPU: CpuVariant> {
     /// Thread priority (preemptive/cooperative)
     pub priority: ThreadPriority,
 
+    /// Data passed between threads during synchronization
+    pub swap_data: Cell<SwapData>,
+
     /// Stats for the current thread
     #[cfg(feature = "kernel-stats")]
     pub stats: ThreadStats,
 
     /// This link is used to organize threads in kernel list of known threads
-    next: list::Link<'a, Thread<'a, CPU>>,
+    runqueue_next: list::Link<'a, Thread<'a, CPU>, Runqueue>,
 
     // TODO
     /// This link is used to make the thread waiting for a synchronization object
     /// by adding it to the queue of waiting thread for the object.
-    waitqueue_next: list::Link<'a, Thread<'a, CPU>>,
+    waitqueue_next: list::Link<'a, Thread<'a, CPU>, Waitqueue>,
 }
 
-impl<'a, CPU: CpuVariant> Node<'a, Thread<'a, CPU>> for Thread<'a, CPU> {
-    fn next(&'a self) -> &'a list::Link<'a, Thread<'a, CPU>> {
-        &self.next
+impl<'a, CPU: CpuVariant> Node<'a, Thread<'a, CPU>, Runqueue> for Thread<'a, CPU> {
+    fn next(&'a self) -> &'a list::Link<'a, Thread<'a, CPU>, Runqueue> {
+        &self.runqueue_next
+    }
+}
+
+impl<'a, CPU: CpuVariant> Node<'a, Thread<'a, CPU>, Waitqueue> for Thread<'a, CPU> {
+    fn next(&'a self) -> &'a list::Link<'a, Thread<'a, CPU>, Waitqueue> {
+        &self.waitqueue_next
     }
 }
 
@@ -148,7 +162,8 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
             context: Cell::new(CPU::CalleeContext::default()),
             priority: ThreadPriority::from(raw_priority),
             state: Cell::new(ThreadState::Stopped),
-            next: list::Link::empty(),
+            runqueue_next: list::Link::empty(),
+            swap_data: Cell::new(SwapData::Empty),
             waitqueue_next: list::Link::empty(),
             #[cfg(feature = "kernel-stats")]
             stats: ThreadStats::default(),
@@ -210,8 +225,9 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         ptr::write(self.stack_ptr.get().add(0), ret as u32);
     }
 
-    pub fn unpend(&self, _notify_value: SwapData) {
+    pub fn unpend(&self, swap_data: SwapData) {
         self.set_ready();
+        self.swap_data.set(swap_data);
         unsafe {
             // TODO, might depend on notify_value
             self.set_syscall_return_value_unchecked(0);

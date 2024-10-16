@@ -6,19 +6,22 @@
 // Retrieved from https://github.com/tock/tock/blob/master/kernel/src/collections/list.rs
 //! Linked list implementation.
 
-use core::cell::Cell;
+use core::{cell::Cell, marker::PhantomData};
 
-pub trait Node<'a, T: Node<'a, T>> {
-    fn next(&'a self) -> &'a Link<'a, T>;
+// This marker trait allow to define multiple implementation of the Node for the same structure
+pub trait Marker {}
+
+pub trait Node<'a, T: Node<'a, T, M>, M: Marker> {
+    fn next(&'a self) -> &'a Link<'a, T, M>;
 }
 
-pub struct List<'a, T: Node<'a, T>> {
-    head: Link<'a, T>,
-    tail: Link<'a, T>,
+pub struct List<'a, T: Node<'a, T, M>, M: Marker> {
+    head: Link<'a, T, M>,
+    tail: Link<'a, T, M>,
 }
 
-impl<'a, T: Node<'a, T>> List<'a, T> {
-    pub const fn empty() -> List<'a, T> {
+impl<'a, T: Node<'a, T, M>, M: 'a + Marker> List<'a, T, M> {
+    pub const fn empty() -> List<'a, T, M> {
         List {
             // head an tail must remain coherent together (either both None or both &Some)
             head: Link::empty(),
@@ -55,22 +58,22 @@ impl<'a, T: Node<'a, T>> List<'a, T> {
         })
     }
 
-    pub fn iter(&self) -> ListIter<'a, T> {
-        ListIter(self.head.0.get())
+    pub fn iter(&self) -> ListIter<'a, T, M> {
+        ListIter(self.head.0.get(), PhantomData)
     }
 }
 
-pub struct Link<'a, T: Node<'a, T>>(Cell<Option<&'a T>>);
+pub struct Link<'a, T: Node<'a, T, M>, M: Marker>(Cell<Option<&'a T>>, PhantomData<M>);
 
-impl<'a, T: Node<'a, T>> Link<'a, T> {
+impl<'a, T: Node<'a, T, M>, M: Marker> Link<'a, T, M> {
     pub const fn empty() -> Self {
-        Link(Cell::new(None))
+        Link(Cell::new(None), PhantomData)
     }
 }
 
-pub struct ListIter<'a, T: Node<'a, T>>(Option<&'a T>);
+pub struct ListIter<'a, T: Node<'a, T, M>, M: 'a + Marker>(Option<&'a T>, PhantomData<M>);
 
-impl<'a, T: Node<'a, T>> Iterator for ListIter<'a, T> {
+impl<'a, T: Node<'a, T, M>, M: Marker> Iterator for ListIter<'a, T, M> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<&'a T> {
