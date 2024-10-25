@@ -4,10 +4,14 @@
 #![feature(core_intrinsics)]
 #![feature(maybe_uninit_uninit_array)]
 #![feature(asm_const)]
+#![feature(allocator_api)]
+
+extern crate alloc;
 
 pub mod cortex_m;
 pub mod kernel;
 pub mod list;
+pub mod mem;
 pub mod serial;
 pub mod serial_utils;
 pub mod soc;
