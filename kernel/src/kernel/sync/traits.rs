@@ -14,8 +14,8 @@ impl<T> Swappable for T where T: Into<SwapData> + TryFrom<SwapData, Error = Swap
 /// Implements `Into<SwapData>` for the unit type `()`.
 ///
 /// This allows the unit type to be used in synchronization primitives where no actual data needs to be passed.
-impl Into<SwapData> for () {
-    fn into(self) -> SwapData {
+impl From<()> for SwapData {
+    fn from(_: ()) -> SwapData {
         SwapData::Empty
     }
 }

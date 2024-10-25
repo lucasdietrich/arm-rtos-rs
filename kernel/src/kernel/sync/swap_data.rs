@@ -6,9 +6,9 @@ pub enum SwapData {
     Ownership,
 }
 
-impl Into<i32> for SwapData {
-    fn into(self) -> i32 {
-        match self {
+impl From<SwapData> for i32 {
+    fn from(value: SwapData) -> i32 {
+        match value {
             SwapData::Empty => 0,
             SwapData::Signal(value) => value as i32,
             SwapData::Ownership => 0,

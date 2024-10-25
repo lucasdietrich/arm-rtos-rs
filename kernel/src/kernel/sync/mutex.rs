@@ -11,8 +11,8 @@ use super::{SwapData, SyncPrimitive};
 /// ownership of a `Mutex`. It serves as a marker in synchronization operations.
 pub struct Ownership;
 
-impl Into<SwapData> for Ownership {
-    fn into(self) -> SwapData {
+impl From<Ownership> for SwapData {
+    fn from(_ownership: Ownership) -> SwapData {
         SwapData::Ownership
     }
 }
@@ -33,6 +33,7 @@ impl TryFrom<SwapData> for Ownership {
 /// The `Mutex` structure keeps track of the owning thread and ensures that only one
 /// thread can access the protected data at a time. It implements the `SyncPrimitive` trait
 /// to integrate with the kernel's synchronization mechanisms.
+#[derive(Default)]
 pub struct Mutex<'a, CPU: CpuVariant> {
     owner: Option<&'a Thread<'a, CPU>>,
 }

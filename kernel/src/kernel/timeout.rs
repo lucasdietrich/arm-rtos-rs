@@ -1,6 +1,7 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Timeout {
     Duration(u32),
+    #[default]
     Forever,
 }
 
@@ -35,17 +36,11 @@ impl TryFrom<i32> for Timeout {
     }
 }
 
-impl Into<i32> for Timeout {
-    fn into(self) -> i32 {
-        match self {
+impl From<Timeout> for i32 {
+    fn from(timeout: Timeout) -> i32 {
+        match timeout {
             Timeout::Duration(ticks) => ticks as i32,
             Timeout::Forever => -1,
         }
-    }
-}
-
-impl Default for Timeout {
-    fn default() -> Self {
-        Timeout::Forever
     }
 }

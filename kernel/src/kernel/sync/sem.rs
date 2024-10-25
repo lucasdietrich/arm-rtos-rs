@@ -24,7 +24,7 @@ impl<'a, CPU: CpuVariant> SyncPrimitive<'a, CPU> for Semaphore {
         if self.cur == 0 {
             None
         } else {
-            self.cur = self.cur - 1;
+            self.cur -= 1;
             Some(())
         }
     }

@@ -1,8 +1,8 @@
-///! Doubly linked list implementation
-///!
-///! The major advantage of having a doubly linked list is the ability to remove
-///! an element from the list in O(1) time complexity without actually knowing
-///! the location of the whole list.
+//! Doubly linked list implementation
+//!
+//! The major advantage of having a doubly linked list is the ability to remove
+//! an element from the list in O(1) time complexity without actually knowing
+//! the location of the whole list.
 use core::{cell::Cell, marker::PhantomData};
 
 use super::Marker;
@@ -124,7 +124,7 @@ impl<'a, T: Node<'a, T, M>, M: 'a + Marker> List<'a, T, M> {
         let head = self.head.get()?;
         let new_head = head.next().0.get().unwrap();
 
-        if new_head as *const T == head as *const T {
+        if core::ptr::eq(new_head, head) {
             self.head.set(None);
         } else {
             head.remove();
@@ -158,7 +158,7 @@ impl<'a, T: Node<'a, T, M>, M: 'a + Marker> Iterator for Iter<'a, T, M> {
         let curr = self.current?;
 
         // Compare references as raw pointers
-        if curr as *const T == self.head.unwrap() as *const T {
+        if core::ptr::eq(curr, self.head.unwrap()) {
             if self.first_pass {
                 self.first_pass = false;
             } else {

@@ -60,21 +60,21 @@ impl SCB {
     }
 
     pub fn get_cpuid(&self) -> u32 {
-        (*self).cpuid.read()
+        self.cpuid.read()
     }
 
     // Valid from SYSTICK(-1) to MEMORYMANAGEMENT(-12)
     // prio can be between 0 and 7
     pub fn get_priority(&self, irqn: SysIrqn) -> u8 {
         let index = ((irqn as u32) & 0xf) - 4;
-        (*self).shp[index as usize].read() >> (8 - NVIC::PRIO_BITS)
+        self.shp[index as usize].read() >> (8 - NVIC::PRIO_BITS)
     }
 
     // Valid from SYSTICK(-1) to MEMORYMANAGEMENT(-12)
     // prio can be between 0 and 7
     pub fn set_priority(&mut self, irqn: SysIrqn, prio: u8) {
         let index = ((irqn as u32) & 0xf) - 4;
-        unsafe { (*self).shp[index as usize].write(prio << (8 - NVIC::PRIO_BITS)) }
+        unsafe { self.shp[index as usize].write(prio << (8 - NVIC::PRIO_BITS)) }
     }
 }
 

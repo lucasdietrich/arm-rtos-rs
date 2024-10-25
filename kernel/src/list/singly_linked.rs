@@ -1,7 +1,7 @@
-// Licensed under the Apache License, Version 2.0 or the MIT License.
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
-// Copyright Lucas Dietrich <ld.adecy@gmail.com> 2024
+//! Licensed under the Apache License, Version 2.0 or the MIT License.
+//! SPDX-License-Identifier: Apache-2.0 OR MIT
+//! Copyright Tock Contributors 2022.
+//! Copyright Lucas Dietrich <ld.adecy@gmail.com> 2024
 
 // Retrieved from https://github.com/tock/tock/blob/master/kernel/src/collections/list.rs
 //! Linked list implementation.
@@ -55,13 +55,12 @@ impl<'a, T: Node<'a, T, M>, M: 'a + Marker> List<'a, T, M> {
     }
 
     pub fn pop_head(&mut self) -> Option<&'a T> {
-        self.head.0.get().map(|head| {
+        self.head.0.get().inspect(|head| {
             let new_head = head.next().0.get();
             self.head.0.set(new_head);
             if new_head.is_none() {
                 self.tail.0.set(None);
             }
-            head
         })
     }
 
@@ -73,7 +72,7 @@ impl<'a, T: Node<'a, T, M>, M: 'a + Marker> List<'a, T, M> {
     pub fn remove(&mut self, node: &'a T) {
         let mut prev: Option<&'a T> = None;
         for cur in self.iter() {
-            if cur as *const T == node as *const T {
+            if core::ptr::eq(cur, node) {
                 let node_next = node.next().0.get();
 
                 // If the searched node is not the first element of the list
@@ -106,9 +105,8 @@ impl<'a, T: Node<'a, T, M>, M: Marker> Iterator for ListIter<'a, T, M> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<&'a T> {
-        self.0.map(|cur| {
+        self.0.inspect(|cur| {
             self.0 = cur.next().0.get();
-            cur
         })
     }
 }

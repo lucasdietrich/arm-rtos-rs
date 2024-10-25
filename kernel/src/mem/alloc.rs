@@ -17,6 +17,12 @@ pub struct BumpAllocator<const SIZE: usize> {
     remaining: AtomicUsize,
 }
 
+impl Default for BumpAllocator<KERNEL_ALLOCATOR_SIZE> {
+    fn default() -> Self {
+        BumpAllocator::new()
+    }
+}
+
 #[global_allocator]
 pub static KERNEL_ALLOCATOR: BumpAllocator<KERNEL_ALLOCATOR_SIZE> = BumpAllocator::new();
 

@@ -403,10 +403,13 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             {
                 // Remove the thread from the kobj waitqueue
                 if let Some(kobj_index) = thread.lives_in_waitqueue() {
-                    self.kobj
+                    if let Some(kobj) = self
+                        .kobj
                         .get_mut(kobj_index as usize)
                         .and_then(|obj_ref| obj_ref.as_mut())
-                        .map(|kobj| kobj.remove_thread(thread));
+                    {
+                        kobj.remove_thread(thread)
+                    }
                 }
 
                 thread.set_ready();

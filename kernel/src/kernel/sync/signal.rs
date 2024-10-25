@@ -2,9 +2,9 @@ use crate::kernel::{thread::Thread, CpuVariant};
 
 use super::{SwapData, SyncPrimitive};
 
-impl Into<SwapData> for u32 {
-    fn into(self) -> SwapData {
-        SwapData::Signal(self)
+impl From<u32> for SwapData {
+    fn from(value: u32) -> SwapData {
+        SwapData::Signal(value)
     }
 }
 
@@ -19,6 +19,7 @@ impl TryFrom<SwapData> for u32 {
     }
 }
 
+#[derive(Default)]
 pub struct Signal {
     value: Option<u32>,
 }

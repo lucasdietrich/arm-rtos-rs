@@ -37,24 +37,24 @@ impl SysTick {
         let tickint: u32 = if interrupt { 1 << TICKINT_POS } else { 0 };
 
         unsafe {
-            (*Self).load.write(FCPU / FSYSCLOCK);
-            (*Self).val.write(0);
-            (*Self).ctrl.write(SOURCE | ENABLE | tickint);
+            Self.load.write(FCPU / FSYSCLOCK);
+            Self.val.write(0);
+            Self.ctrl.write(SOURCE | ENABLE | tickint);
         }
 
         SysTick
     }
 
     pub fn get_reload_value(&self) -> u32 {
-        (*self).load.read()
+        self.load.read()
     }
 
     pub fn get_current_value(&self) -> u32 {
-        (*self).val.read()
+        self.val.read()
     }
 
     pub fn get_countflag(&self) -> bool {
-        (*self).ctrl.read() & (1 << COUNTFLAG_POS) != 0
+        self.ctrl.read() & (1 << COUNTFLAG_POS) != 0
     }
 }
 
