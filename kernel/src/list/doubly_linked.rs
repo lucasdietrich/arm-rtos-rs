@@ -50,6 +50,7 @@ impl<'a, T: Node<'a, T, M>, M: 'a + Marker> Link<'a, T, M> {
     }
 }
 
+#[allow(dead_code)]
 fn insert_after<'a, T: Node<'a, T, M>, M: 'a + Marker>(node: &'a T, new: &'a T) {
     let old_next = node.next().0.get().unwrap();
 

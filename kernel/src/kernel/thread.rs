@@ -1,9 +1,6 @@
-use super::{
-    stack::StackInfo, sync::SwapData, timeout::Timeout, CpuVariant, InitStackFrameTrait,
-    ThreadEntry,
-};
+use super::{stack::StackInfo, sync::SwapData, CpuVariant, InitStackFrameTrait, ThreadEntry};
 use crate::list::{self, singly_linked as sl};
-use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, future::Pending, ptr};
+use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {

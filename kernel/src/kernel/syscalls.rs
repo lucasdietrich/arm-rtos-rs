@@ -1,9 +1,7 @@
-use core::time::Duration;
-
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use super::{sync::SwapData, timeout::Timeout};
+use super::timeout::Timeout;
 
 #[derive(Debug)]
 pub struct SVCCallParams {
@@ -36,7 +34,7 @@ pub enum KernelSyscallId {
     // Make thread pend on a kernel object
     Pend = 5,
     // // Uptime
-    // Uptime = 6,
+    // Uptime = 100,
 }
 
 #[repr(u32)]
@@ -76,17 +74,23 @@ impl Syscall {
                             }
                         })
                     }
-                    KernelSyscallId::Sync => Some(KernelSyscall::Sync {
-                        kobj: params.r2 as i32,
-                    }),
-                    KernelSyscallId::Pend => Some(KernelSyscall::Pend {
-                        kobj: params.r2 as i32,
-                        timeout: if params.r1 == 0 {
-                            Timeout::Forever
-                        } else {
-                            Timeout::Duration(params.r0 as u64)
-                        },
-                    }),
+                    KernelSyscallId::Sync => {
+                        SyncPrimitiveType::from_u32(params.r2).map(|sync_prim_type| {
+                            KernelSyscall::Sync {
+                                kobj: params.r1 as i32,
+                                prim: sync_prim_type,
+                            }
+                        })
+                    }
+                    KernelSyscallId::Pend => {
+                        SyncPrimitiveType::from_u32(params.r2).map(|sync_prim_type| {
+                            KernelSyscall::Pend {
+                                timeout: Timeout::try_from(params.r0 as i32).unwrap_or_default(),
+                                kobj: params.r1 as i32,
+                                prim: sync_prim_type,
+                            }
+                        })
+                    }
                 }
                 .map(Syscall::Kernel)
             }),
@@ -124,10 +128,21 @@ pub enum SyncPrimitiveCreate {
 #[derive(Debug)]
 pub enum KernelSyscall {
     Yield,
-    Sleep { ms: u32 },
-    Create { prim: SyncPrimitiveCreate },
-    Sync { kobj: i32 },
-    Pend { kobj: i32, timeout: Timeout },
+    Sleep {
+        ms: u32,
+    },
+    Create {
+        prim: SyncPrimitiveCreate,
+    },
+    Sync {
+        prim: SyncPrimitiveType,
+        kobj: i32,
+    },
+    Pend {
+        prim: SyncPrimitiveType,
+        kobj: i32,
+        timeout: Timeout,
+    },
 }
 
 #[derive(Debug)]

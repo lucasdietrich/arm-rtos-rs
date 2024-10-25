@@ -1,14 +1,14 @@
 // Simple bump allocator for the kernel.
 
 use core::{
-    alloc::{Allocator, GlobalAlloc},
+    alloc::GlobalAlloc,
     cell::UnsafeCell,
-    ptr::{null, null_mut},
+    ptr::null_mut,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 const MAX_SUPPORTED_ALIGN: usize = 8;
-const KERNEL_ALLOCATOR_SIZE: usize = 2048;
+const KERNEL_ALLOCATOR_SIZE: usize = 4096;
 
 // Align must match MAX_SUPPORTED_ALIGN
 #[repr(C, align(8))]
@@ -18,7 +18,7 @@ pub struct BumpAllocator<const SIZE: usize> {
 }
 
 #[global_allocator]
-static KERNEL_ALLOCATOR: BumpAllocator<KERNEL_ALLOCATOR_SIZE> = BumpAllocator::new();
+pub static KERNEL_ALLOCATOR: BumpAllocator<KERNEL_ALLOCATOR_SIZE> = BumpAllocator::new();
 
 impl<const SIZE: usize> BumpAllocator<SIZE> {
     pub const fn new() -> Self {

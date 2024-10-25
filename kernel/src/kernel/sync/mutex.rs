@@ -18,12 +18,12 @@ impl Into<SwapData> for Ownership {
 }
 
 impl TryFrom<SwapData> for Ownership {
-    type Error = ();
+    type Error = SwapData;
 
-    fn try_from(swap: SwapData) -> Result<Self, ()> {
+    fn try_from(swap: SwapData) -> Result<Self, SwapData> {
         match swap {
             SwapData::Ownership => Ok(Ownership),
-            _ => Err(()),
+            _ => Err(swap),
         }
     }
 }
@@ -54,8 +54,13 @@ impl<'a, CPU: CpuVariant> SyncPrimitive<'a, CPU> for Mutex<'a, CPU> {
     /// # Arguments
     ///
     /// * `_released` - The ownership token to be consumed upon release.
-    fn release(&mut self, _released: Ownership) {
-        self.owner = None
+    fn release(&mut self, _released: Ownership) -> Result<(), Ownership> {
+        if self.owner.is_none() {
+            Err(Ownership)
+        } else {
+            self.owner = None;
+            Ok(())
+        }
     }
 
     /// Attempts to acquire the mutex for the given thread.
@@ -79,5 +84,6 @@ impl<'a, CPU: CpuVariant> SyncPrimitive<'a, CPU> for Mutex<'a, CPU> {
         } else {
             None
         }
+        // TODO, what to do if the mutex is already owned by the same thread?
     }
 }

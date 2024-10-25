@@ -8,6 +8,7 @@ default = ["mps2-an385", "kernel-stats"]
 mps2-an385 = ["cm3"]
 cm3 = []
 kernel-stats = []
+kernel-debug = []
 
 [dependencies]
 num-traits = { version =  "0.2", default-features = false}

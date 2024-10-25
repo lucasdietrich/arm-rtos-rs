@@ -1,6 +1,4 @@
-use core::mem::{self, MaybeUninit};
-
-use crate::{println, serial_utils::Hex};
+use core::mem::MaybeUninit;
 
 /// A fixed-size stack suitable for use as a task stack.
 ///

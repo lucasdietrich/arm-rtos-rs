@@ -1,15 +1,19 @@
 mod mutex;
 mod sem;
 mod signal;
-pub mod sync;
+mod sync;
 
 mod kobj;
+mod swap_data;
 mod traits;
 
 pub use mutex::Mutex;
 pub use sem::Semaphore;
 pub use signal::Signal;
+pub use sync::Sync;
+
+pub use swap_data::SwapData;
 
 pub use traits::{Swappable, SyncPrimitive};
 
-pub use kobj::{KernelObject, KernelObjectTrait, SwapData};
+pub use kobj::{KernelObject, KernelObjectTrait};

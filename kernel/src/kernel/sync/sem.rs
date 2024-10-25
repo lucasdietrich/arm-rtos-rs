@@ -14,8 +14,10 @@ impl Semaphore {
 impl<'a, CPU: CpuVariant> SyncPrimitive<'a, CPU> for Semaphore {
     type Swap = ();
 
-    fn release(&mut self, _released: ()) {
-        self.cur = (self.cur + 1).max(self.max)
+    fn release(&mut self, _released: ()) -> Result<(), ()> {
+        self.cur = (self.cur + 1).max(self.max);
+
+        Ok(())
     }
 
     fn acquire(&mut self, _thread: &'a Thread<'a, CPU>) -> Option<()> {

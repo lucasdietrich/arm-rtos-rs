@@ -1,8 +1,4 @@
-use core::{
-    alloc::{Allocator, GlobalAlloc},
-    ptr::{self, addr_of_mut, read_volatile, write_volatile},
-    time,
-};
+use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
 
 use alloc::{alloc::Global, boxed::Box};
 
@@ -11,22 +7,25 @@ use crate::{
     kernel::{
         errno::Kerr,
         idle::Idle,
-        syscalls::{IoSyscall, KernelSyscall, SVCCallParams, SyncPrimitiveCreate, Syscall},
+        sync::{
+            KernelObject, KernelObjectTrait, Mutex, Semaphore, Signal, SwapData, Sync,
+            SyncPrimitive,
+        },
+        syscalls::{
+            IoSyscall, KernelSyscall, SVCCallParams, SyncPrimitiveCreate, SyncPrimitiveType,
+            Syscall,
+        },
+        thread::Runqueue,
         thread::{PendingContext, Thread, ThreadState},
         timeout::Timeout,
         CpuVariant,
     },
     list::singly_linked as sl,
-    mem::pool::MemoryPool,
-    println, stdio,
+    stdio,
 };
 
-use super::{
-    sync::{
-        sync::Sync, KernelObject, KernelObjectTrait, Mutex, Semaphore, SwapData, SyncPrimitive,
-    },
-    thread::Runqueue,
-};
+#[cfg(feature = "kernel-debug")]
+use crate::println;
 
 pub enum SupervisorCallReason {
     Syscall(SVCCallParams),
@@ -38,11 +37,28 @@ pub enum SchedulerVerdict<'a, CPU: CpuVariant> {
     Idle,
 }
 
+pub enum SyscallOutcome {
+    // Syscall completed immediately with the given return value
+    Completed(i32),
+    // Syscall made the thread pending and is waiting for a signal to complete
+    Pending,
+}
+
+impl From<Option<i32>> for SyscallOutcome {
+    fn from(value: Option<i32>) -> Self {
+        match value {
+            Some(ret) => SyscallOutcome::Completed(ret),
+            None => SyscallOutcome::Pending,
+        }
+    }
+}
+
 // requires generic_const?? ... unstable feature
 pub trait KernelSpec {
     const KOBJS: u32;
 }
 
+// TODO make this value a const generic
 // Define the tick duration in milliseconds
 pub const MS_PER_TICK: u64 = 10;
 
@@ -64,14 +80,7 @@ pub struct Kernel<'a, CPU: CpuVariant, const KOBJS: usize> {
     // Idle thread
     idle: Thread<'a, CPU>,
 
-    // Kernel objects (Sync)
-    // ... other fields ...
-    // Storage for different types of kernel objects
-    // sync_objects: [Option<KernelObject<'a, Sync, CPU>>; KOBJS],
-    // mutex_objects: [Option<KernelObject<'a, Mutex<'a, CPU>, CPU>>; KOBJS],
-    // semaphore_objects: [Option<KernelObject<'a, Semaphore, CPU>>; KOBJS],
-
-    // sync_pool: MemoryPool<KernelObject<'a, Sync, CPU>, KOBJS>,
+    // Kernel objects (Sync) for synchronization
     kobj: [Option<Box<dyn KernelObjectTrait<'a, CPU> + 'a>>; KOBJS],
 }
 
@@ -103,6 +112,59 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
 
     pub fn get_ticks(&self) -> u64 {
         self.ticks
+    }
+
+    pub fn kernel_loop(&mut self) {
+        // Retrieve next thread to be executed
+        let scheduler_verdict = self.sched_choose_next();
+
+        match scheduler_verdict {
+            // Switch to chosen user process
+            // when returning from user process, we need to handle various events
+            SchedulerVerdict::RunProcess(process) => match Self::switch_to_process(process) {
+                SupervisorCallReason::Syscall(syscall_params) => unsafe {
+                    let ret = if let Some(syscall) = Syscall::from_svc_params(syscall_params) {
+                        self.do_syscall(process, syscall)
+                    } else {
+                        SyscallOutcome::Completed(Kerr::NoSuchSyscall as i32)
+                    };
+
+                    // Syscall completed, return value in user process stack in r0 register
+                    if let SyscallOutcome::Completed(result) = ret {
+                        process.set_syscall_return_value_unchecked(result);
+                    }
+                },
+                SupervisorCallReason::Interrupted => {
+                    self.handle_interrupts();
+
+                    // TODO: If current thread is cooperative, we must return to it
+                }
+            },
+
+            SchedulerVerdict::Idle => match Self::switch_to_process(&self.idle) {
+                SupervisorCallReason::Interrupted => self.handle_interrupts(),
+                // Idle thread should never use syscalls
+                _ => panic!("IDLE fired syscall"),
+            },
+        };
+    }
+
+    fn sched_choose_next(&mut self) -> SchedulerVerdict<'a, CPU> {
+        // Pick any ready thread with maximum priority
+        // This naive scheduler may alway pick the same thread even if other
+        // threads of the same priority are ready. This can be improve by
+        // defining per-thread time slice and sharing CPU time using round-robin
+        // algorithm. This won't be implemented here.
+        let thread_candidate = self
+            .tasks
+            .iter()
+            .filter(|thread| thread.is_ready())
+            .max_by_key(|thread| thread.priority);
+
+        match thread_candidate {
+            Some(candidate) => SchedulerVerdict::RunProcess(candidate),
+            None => SchedulerVerdict::Idle,
+        }
     }
 
     fn switch_to_process(current: &Thread<'_, CPU>) -> SupervisorCallReason {
@@ -174,29 +236,38 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
         }
     }
 
-    fn create(&mut self, new_kobj_type: SyncPrimitiveCreate) -> Option<i32> {
-        match new_kobj_type {
-            SyncPrimitiveCreate::Sync => self
-                .kobj
-                .iter_mut()
-                .enumerate()
-                .find(|(_, slot)| slot.is_none())
-                .and_then(|(index, slot)| {
-                    Box::<KernelObject<'a, Sync, CPU>, Global>::try_new(KernelObject::new(
-                        index as u32,
-                        Sync,
-                    ))
-                    .map(|kobj| {
-                        *slot = Some(kobj);
-                        index as i32
-                    })
-                    .ok()
-                }),
-            _ => None,
-        }
+    /// Create a new kernel object of type S with the given initialized primitive
+    /// and return the index of the created object
+    ///
+    /// # Arguments
+    ///
+    /// * `initialized_sync` - The initialized synchronization primitive
+    ///
+    /// # Returns
+    ///
+    /// * The index of the created object or None if slot allocation failed
+    fn kobj_create<S>(&mut self, initialized_sync: S) -> Option<i32>
+    where
+        S: SyncPrimitive<'a, CPU> + 'a,
+    {
+        self.kobj
+            .iter_mut()
+            .enumerate()
+            .find(|(_, slot)| slot.is_none())
+            .and_then(|(index, slot)| {
+                Box::<KernelObject<'a, S, CPU>, Global>::try_new(KernelObject::new(
+                    index as u32,
+                    initialized_sync,
+                ))
+                .map(|kobj| {
+                    *slot = Some(kobj);
+                    index as i32
+                })
+                .ok()
+            })
     }
 
-    fn acquire(
+    fn kobj_acquire(
         &mut self,
         kobj: i32,
         thread: &'a Thread<'a, CPU>,
@@ -209,11 +280,20 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             .and_then(|kobj| kobj.acquire(thread, ticks, timeout))
     }
 
-    fn notify_or_release(&mut self, kobj: i32, swap_data: SwapData) -> Option<i32> {
-        self.kobj
+    fn kobj_release_notify(&mut self, kobj: i32, swap_data: SwapData) -> Kerr {
+        if let Some(obj_ref) = self
+            .kobj
             .get_mut(kobj as usize)
-            .and_then(|obj_ref| obj_ref.as_mut())
-            .and_then(|kobj| kobj.notify_or_release(swap_data))
+            .and_then(|slot| slot.as_mut())
+        {
+            match obj_ref.notify_or_release(swap_data) {
+                Ok(_) => Kerr::Success,
+                Err(_) => Kerr::NotSupported,
+            }
+        } else {
+            // Invalid kernel object
+            Kerr::NoEntry
+        }
     }
 
     /// Handle the syscall from the thread
@@ -225,24 +305,28 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
     ///
     /// Note that the thread must not be marked as "Running" if the returned value
     /// is not Some()
-    unsafe fn do_syscall(&mut self, thread: &'a Thread<'a, CPU>, syscall: Syscall) -> Option<i32> {
-        println!("{:?}", syscall);
-
+    unsafe fn do_syscall(
+        &mut self,
+        thread: &'a Thread<'a, CPU>,
+        syscall: Syscall,
+    ) -> SyscallOutcome {
         let ticks = self.get_ticks();
+
+        #[cfg(feature = "kernel-debug")]
+        println!("{:?}", syscall);
 
         #[cfg(feature = "kernel-stats")]
         thread.stats.syscalls.set(thread.stats.syscalls.get() + 1);
 
         match syscall {
-            Syscall::Kernel(KernelSyscall::Yield) => Some(0),
+            Syscall::Kernel(KernelSyscall::Yield) => SyscallOutcome::Completed(0),
             Syscall::Kernel(KernelSyscall::Sleep { ms }) => match ms {
-                0 => Some(0),
+                0 => SyscallOutcome::Completed(0),
                 u32::MAX => {
                     thread.state.set(ThreadState::Stopped);
-                    Some(0)
+                    SyscallOutcome::Completed(0)
                 }
                 _ => {
-                    // TODO replace 10 with the actual TICKS_PER_MSEC value
                     let expiration_time = self.get_ticks() + ms as u64 / MS_PER_TICK;
 
                     thread
@@ -251,17 +335,45 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                             expiration_time,
                         ))));
 
-                    None
+                    SyscallOutcome::Pending
                 }
             },
-            Syscall::Kernel(KernelSyscall::Create { prim: create_prim }) => {
-                Self::create(self, create_prim)
-            }
-            Syscall::Kernel(KernelSyscall::Sync { kobj }) => {
-                Self::notify_or_release(self, kobj, ().into())
-            }
-            Syscall::Kernel(KernelSyscall::Pend { kobj, timeout }) => {
-                Self::acquire(self, kobj, thread, ticks, timeout).map(|_| 0)
+            Syscall::Kernel(KernelSyscall::Create { prim }) => SyscallOutcome::Completed(
+                match prim {
+                    SyncPrimitiveCreate::Sync => self.kobj_create(Sync),
+                    SyncPrimitiveCreate::Signal => self.kobj_create(Signal::new()),
+                    SyncPrimitiveCreate::Semaphore { init, max } => {
+                        self.kobj_create(Semaphore::new(init, max))
+                    }
+                    SyncPrimitiveCreate::Mutex => self.kobj_create(Mutex::new()),
+                }
+                .unwrap_or(Kerr::NoMemory as i32),
+            ),
+            Syscall::Kernel(KernelSyscall::Pend {
+                prim: _, // sync_prim_type
+                kobj,
+                timeout,
+            }) => self
+                .kobj_acquire(kobj, thread, ticks, timeout)
+                .map(|s| SyscallOutcome::Completed(s.into()))
+                .unwrap_or(SyscallOutcome::Pending),
+            Syscall::Kernel(KernelSyscall::Sync { prim, kobj }) => {
+                SyscallOutcome::Completed(match prim {
+                    SyncPrimitiveType::Sync => {
+                        Self::kobj_release_notify(self, kobj, SwapData::Empty) as i32
+                    }
+                    SyncPrimitiveType::Signal => {
+                        // Customize the signal value to 1
+                        let value = 1;
+                        Self::kobj_release_notify(self, kobj, SwapData::Signal(value)) as i32
+                    }
+                    SyncPrimitiveType::Semaphore => {
+                        Self::kobj_release_notify(self, kobj, SwapData::Empty) as i32
+                    }
+                    SyncPrimitiveType::Mutex => {
+                        Self::kobj_release_notify(self, kobj, SwapData::Ownership) as i32
+                    }
+                })
             }
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
                 // rebuild &[u8] from (string and len)
@@ -270,27 +382,9 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                 // Direct write
                 stdio::write_bytes(slice);
 
-                Some(0)
+                SyscallOutcome::Completed(0)
             }
-            _ => Some(-(Kerr::ENOSYS as i32)),
-        }
-    }
-
-    fn sched_choose_next(&mut self) -> SchedulerVerdict<'a, CPU> {
-        // Pick any ready thread with maximum priority
-        // This naive scheduler may alway pick the same thread even if other
-        // threads of the same priority are ready. This can be improve by
-        // defining per-thread time slice and sharing CPU time using round-robin
-        // algorithm. This won't be implemented here.
-        let thread_candidate = self
-            .tasks
-            .iter()
-            .filter(|thread| thread.is_ready())
-            .max_by_key(|thread| thread.priority);
-
-        match thread_candidate {
-            Some(candidate) => SchedulerVerdict::RunProcess(candidate),
-            None => SchedulerVerdict::Idle,
+            _ => SyscallOutcome::Completed(Kerr::NoSuchSyscall as i32),
         }
     }
 
@@ -317,44 +411,9 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
 
                 thread.set_ready();
                 unsafe {
-                    thread.set_syscall_return_value_unchecked(-(Kerr::ETIMEDOUT as i32));
+                    thread.set_syscall_return_value_unchecked(Kerr::TimedOut as i32);
                 }
             }
         }
-    }
-
-    pub fn kernel_loop(&mut self) {
-        // Retrieve next thread to be executed
-        let scheduler_verdict = self.sched_choose_next();
-
-        match scheduler_verdict {
-            // Switch to chosen user process
-            // when returning from user process, we need to handle various events
-            SchedulerVerdict::RunProcess(process) => match Self::switch_to_process(process) {
-                SupervisorCallReason::Syscall(syscall_params) => unsafe {
-                    let ret = if let Some(syscall) = Syscall::from_svc_params(syscall_params) {
-                        self.do_syscall(process, syscall)
-                    } else {
-                        Some(-(Kerr::ENOSYS as i32))
-                    };
-
-                    // Syscall completed, return value in user process stack in r0 register
-                    if let Some(result) = ret {
-                        process.set_syscall_return_value_unchecked(result);
-                    }
-                },
-                SupervisorCallReason::Interrupted => {
-                    self.handle_interrupts();
-
-                    // TODO: If current thread is cooperative, we must return to it
-                }
-            },
-
-            SchedulerVerdict::Idle => match Self::switch_to_process(&self.idle) {
-                SupervisorCallReason::Interrupted => self.handle_interrupts(),
-                // Idle thread should never use syscalls
-                _ => panic!("IDLE fired syscall"),
-            },
-        };
     }
 }
