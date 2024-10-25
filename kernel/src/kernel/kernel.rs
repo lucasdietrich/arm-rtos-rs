@@ -94,10 +94,6 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             ticks: 0,
             idle,
             kobj: [const { None }; KOBJS],
-            // sync_pool: MemoryPool::init(),
-            // mutex_objects: [const { None }; KOBJS],
-            // semaphore_objects: [const { None }; KOBJS],
-            // sync_objects: [const { None }; KOBJS],
         }
     }
 
@@ -151,7 +147,7 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
 
     fn sched_choose_next(&mut self) -> SchedulerVerdict<'a, CPU> {
         // Pick any ready thread with maximum priority
-        // This naive scheduler may alway pick the same thread even if other
+        // This naive scheduler may always pick the same thread even if other
         // threads of the same priority are ready. This can be improve by
         // defining per-thread time slice and sharing CPU time using round-robin
         // algorithm. This won't be implemented here.

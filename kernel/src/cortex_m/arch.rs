@@ -109,22 +109,10 @@ impl CpuVariant for CortexM {
             ldmia r1, {{r4, r11}}
     
             // 4. trigger a pendSV: set PENDSVSET bit (28) in ICSR register (0xE000ED04)
-            // 4.a)
-            // ldr r0, =0xE000ED04
-            // ldr r2, [r0, #0]
-            // ldr r3, =0x10000000
-            // orr r3, r3, r2
-            // str r3, [r0]
-            // isb
-                
-            // 4.b)
             ldr r0, =0xE000ED04   // Load ICSR address
             ldr r3, =0x10000000   // Load PENDSVSET bit value
             str r3, [r0]          // Trigger PendSV by writing to ICSR
             isb
-    
-            // 4.c)
-            // svc 0xFF
     
             // =============================================================
             // PendSV triggered; now we have returned from the exception 
