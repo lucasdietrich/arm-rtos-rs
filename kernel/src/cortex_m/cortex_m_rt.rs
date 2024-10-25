@@ -101,10 +101,10 @@ pub static __ONCE__: () = ();
 pub unsafe extern "C" fn _reset_handler() {
     // Clear the .bss section
     let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-    ptr::write_bytes(addr_of_mut!(_ebss), 0, bss_size);
+    ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
 
     // Copy the .data section from FLASH to RAM
-    let data_size = addr_of!(_sdata) as usize - addr_of!(_sbss) as usize;
+    let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
     ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
 
     // Call the entry point of the program (it is the main !)
