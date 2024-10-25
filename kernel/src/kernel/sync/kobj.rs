@@ -10,6 +10,16 @@ use crate::{
 
 use super::{SwapData, SyncPrimitive};
 
+pub enum AcquireResult {
+    /// The thread has obtained the primitive
+    Obtained(SwapData),
+    /// The thread has not obtained the primitive
+    /// and the timeout is zero
+    NotObtained,
+    /// The thread has been marked as pending
+    Pending,
+}
+
 pub trait KernelObjectTrait<'a, CPU: CpuVariant> {
     /// Remove the thread from the waitqueue
     fn remove_thread(&mut self, thread: &'a Thread<'a, CPU>);
@@ -21,7 +31,7 @@ pub trait KernelObjectTrait<'a, CPU: CpuVariant> {
         thread: &'a Thread<'a, CPU>,
         ticks: u64,
         timeout: Timeout,
-    ) -> Option<SwapData>;
+    ) -> AcquireResult;
 
     /// Notify the first thread in the waitqueue or release the primitive
     /// if no thread is waiting.
@@ -33,7 +43,7 @@ pub trait KernelObjectTrait<'a, CPU: CpuVariant> {
 
 /// Implement a concrete synchronization primitive
 pub struct KernelObject<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> {
-    /// Identifier of the kernel object
+    /// Identifier of the kernel object (currently index of the object in the kernel object table)
     identifier: u32,
     /// List of threads waiting on the kernel object
     waitqueue: sl::List<'a, Thread<'a, CPU>, Waitqueue>,
@@ -45,7 +55,7 @@ impl<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> KernelObject<'a, S, CPU> {
     /// Create a new kernel object
     pub fn new(identifier: u32, primitive: S) -> Self {
         KernelObject {
-            identifier: identifier,
+            identifier,
             waitqueue: sl::List::empty(),
             primitive,
         }
@@ -60,20 +70,30 @@ impl<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> KernelObjectTrait<'a, CPU>
         thread: &'a Thread<'a, CPU>,
         ticks: u64,
         timeout: Timeout,
-    ) -> Option<SwapData> {
-        let timeout_instant = timeout
-            .get_ticks()
-            .map(|ms| ticks + (ms as u64 / MS_PER_TICK));
+    ) -> AcquireResult {
         let obtained = self.primitive.acquire(thread);
-        if obtained.is_none() {
-            // If the object is not available, make the thread pending on it by
-            // appending it at the end of the waitqueue.
+
+        if let Some(swap) = obtained {
+            AcquireResult::Obtained(swap.into()) // Convert S::Swap into SwapData
+        } else if timeout.is_zero() {
+            AcquireResult::NotObtained
+        } else {
+            // If the object is not available and a non-zero timeout is given
+            // mark the thread as pending and set the timeout
+
+            // appending it at the end of the kobj waitqueue.
             self.waitqueue.push_back(thread);
+
+            // Calculate the instant when the thread should be woken up
+            let timeout_instant = timeout
+                .get_ticks()
+                .map(|ms| ticks + (ms as u64 / MS_PER_TICK));
 
             // Mark the thread pending until the given instant
             thread.set_pending(self.identifier, timeout_instant);
+
+            AcquireResult::Pending
         }
-        obtained.map(|s| s.into()) // Convert S::Swap into SwapData
     }
 
     fn notify_or_release(&mut self, swap_data: SwapData) -> Result<(), SwapData> {

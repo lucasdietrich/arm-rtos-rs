@@ -14,7 +14,7 @@ pub enum Kerr {
     ENOEXEC = -8,   /* Exec format error */
     EBADF = -9,     /* Bad file number */
     ECHILD = -10,   /* No child processes */
-    EAGAIN = -11,   /* Try again */
+    TryAgain = -11, /* Try again */
     NoMemory = -12, /* Out of memory */
     EACCES = -13,   /* Permission denied */
     EFAULT = -14,   /* Bad address */
@@ -67,6 +67,6 @@ pub enum Kerr {
     NotSupported = -524, /* Operation not supported */
 }
 
-pub const EWOULDBLOCK: Kerr = Kerr::EAGAIN; /* Operation would block */
+pub const EWOULDBLOCK: Kerr = Kerr::TryAgain; /* Operation would block */
 
 pub type KResult<T> = Result<T, Kerr>;

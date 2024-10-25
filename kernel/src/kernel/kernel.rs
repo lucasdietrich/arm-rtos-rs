@@ -27,6 +27,8 @@ use crate::{
 #[cfg(feature = "kernel-debug")]
 use crate::println;
 
+use super::sync::AcquireResult;
+
 pub enum SupervisorCallReason {
     Syscall(SVCCallParams),
     Interrupted,
@@ -269,15 +271,27 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
         thread: &'a Thread<'a, CPU>,
         ticks: u64,
         timeout: Timeout,
-    ) -> Option<SwapData> {
-        self.kobj
+    ) -> SyscallOutcome {
+        if let Some(obj_ref) = self
+            .kobj
             .get_mut(kobj as usize)
-            .and_then(|obj_ref| obj_ref.as_mut())
-            .and_then(|kobj| kobj.acquire(thread, ticks, timeout))
+            .and_then(|slot| slot.as_mut())
+        {
+            match obj_ref.acquire(thread, ticks, timeout) {
+                AcquireResult::Obtained(swap_data) => {
+                    SyscallOutcome::Completed(swap_data.to_syscall_ret())
+                }
+                AcquireResult::NotObtained => SyscallOutcome::Completed(Kerr::TryAgain as i32),
+                AcquireResult::Pending => SyscallOutcome::Pending,
+            }
+        } else {
+            // Invalid kernel object
+            SyscallOutcome::Completed(Kerr::NoEntry as i32)
+        }
     }
 
-    fn kobj_release_notify(&mut self, kobj: i32, swap_data: SwapData) -> Kerr {
-        if let Some(obj_ref) = self
+    fn kobj_release_notify(&mut self, kobj: i32, swap_data: SwapData) -> SyscallOutcome {
+        let ret = if let Some(obj_ref) = self
             .kobj
             .get_mut(kobj as usize)
             .and_then(|slot| slot.as_mut())
@@ -289,7 +303,9 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
         } else {
             // Invalid kernel object
             Kerr::NoEntry
-        }
+        };
+
+        SyscallOutcome::Completed(ret as i32)
     }
 
     /// Handle the syscall from the thread
@@ -334,7 +350,7 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                     SyscallOutcome::Pending
                 }
             },
-            Syscall::Kernel(KernelSyscall::Create { prim }) => SyscallOutcome::Completed(
+            Syscall::Kernel(KernelSyscall::SyncCreate { prim }) => SyscallOutcome::Completed(
                 match prim {
                     SyncPrimitiveCreate::Sync => self.kobj_create(Sync),
                     SyncPrimitiveCreate::Signal => self.kobj_create(Signal::new()),
@@ -349,27 +365,24 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                 prim: _, // sync_prim_type
                 kobj,
                 timeout,
-            }) => self
-                .kobj_acquire(kobj, thread, ticks, timeout)
-                .map(|s| SyscallOutcome::Completed(s.into()))
-                .unwrap_or(SyscallOutcome::Pending),
+            }) => self.kobj_acquire(kobj, thread, ticks, timeout),
             Syscall::Kernel(KernelSyscall::Sync { prim, kobj }) => {
-                SyscallOutcome::Completed(match prim {
+                match prim {
                     SyncPrimitiveType::Sync => {
-                        Self::kobj_release_notify(self, kobj, SwapData::Empty) as i32
+                        Self::kobj_release_notify(self, kobj, SwapData::Empty)
                     }
                     SyncPrimitiveType::Signal => {
                         // Customize the signal value to 1
                         let value = 1;
-                        Self::kobj_release_notify(self, kobj, SwapData::Signal(value)) as i32
+                        Self::kobj_release_notify(self, kobj, SwapData::Signal(value))
                     }
                     SyncPrimitiveType::Semaphore => {
-                        Self::kobj_release_notify(self, kobj, SwapData::Empty) as i32
+                        Self::kobj_release_notify(self, kobj, SwapData::Empty)
                     }
                     SyncPrimitiveType::Mutex => {
-                        Self::kobj_release_notify(self, kobj, SwapData::Ownership) as i32
+                        Self::kobj_release_notify(self, kobj, SwapData::Ownership)
                     }
-                })
+                }
             }
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
                 // rebuild &[u8] from (string and len)

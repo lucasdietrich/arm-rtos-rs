@@ -20,6 +20,14 @@ impl Timeout {
     pub fn from_seconds(seconds: u32) -> Self {
         Timeout::Duration(seconds * 1000)
     }
+
+    pub fn is_forever(&self) -> bool {
+        matches!(self, Timeout::Forever)
+    }
+
+    pub fn is_zero(&self) -> bool {
+        matches!(self, Timeout::Duration(0))
+    }
 }
 
 impl TryFrom<i32> for Timeout {

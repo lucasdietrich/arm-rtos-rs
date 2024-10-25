@@ -59,7 +59,7 @@ impl Syscall {
                     KernelSyscallId::Sleep => Some(KernelSyscall::Sleep { ms: params.r0 }),
                     KernelSyscallId::SyncCreate => {
                         SyncPrimitiveType::from_u32(params.r2).map(|sync_prim_type| {
-                            KernelSyscall::Create {
+                            KernelSyscall::SyncCreate {
                                 prim: match sync_prim_type {
                                     SyncPrimitiveType::Sync => SyncPrimitiveCreate::Sync,
                                     SyncPrimitiveType::Signal => SyncPrimitiveCreate::Signal,
@@ -131,7 +131,7 @@ pub enum KernelSyscall {
     Sleep {
         ms: u32,
     },
-    Create {
+    SyncCreate {
         prim: SyncPrimitiveCreate,
     },
     Sync {

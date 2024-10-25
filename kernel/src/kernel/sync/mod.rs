@@ -16,4 +16,4 @@ pub use swap_data::SwapData;
 
 pub use traits::{Swappable, SyncPrimitive};
 
-pub use kobj::{KernelObject, KernelObjectTrait};
+pub use kobj::{AcquireResult, KernelObject, KernelObjectTrait};
