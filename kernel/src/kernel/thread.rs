@@ -2,10 +2,11 @@ use super::{
     errno::Kerr,
     stack::StackInfo,
     sync::{SwapData, Swappable},
+    timeout::TimeoutInstant,
     CpuVariant, InitStackFrameTrait, ThreadEntry,
 };
 use crate::list::{self, singly_linked as sl};
-use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};
+use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr, time};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -17,7 +18,7 @@ pub enum ThreadState {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct PendingContext {
     sync_kobj_index: Option<u32>,
-    timeout_instant: Option<u64>,
+    timeout_instant: Option<TimeoutInstant>,
 }
 
 pub enum UnpendReason {
@@ -31,21 +32,24 @@ pub struct Waitqueue;
 impl list::Marker for Waitqueue {}
 
 impl PendingContext {
-    pub fn new_sync(sync_kobj_index: u32, timeout_instant: Option<u64>) -> PendingContext {
+    pub fn new_sync(
+        sync_kobj_index: u32,
+        timeout_instant: Option<TimeoutInstant>,
+    ) -> PendingContext {
         PendingContext {
             sync_kobj_index: Some(sync_kobj_index),
             timeout_instant,
         }
     }
 
-    pub fn new_timeout(timeout_instant: Option<u64>) -> PendingContext {
+    pub fn new_timeout(timeout_instant: TimeoutInstant) -> PendingContext {
         PendingContext {
             sync_kobj_index: None,
-            timeout_instant,
+            timeout_instant: Some(timeout_instant),
         }
     }
 
-    pub fn get_timeout(&self) -> Option<u64> {
+    pub fn get_timeout(&self) -> Option<TimeoutInstant> {
         self.timeout_instant
     }
 }
@@ -181,11 +185,11 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         self.state.set(ThreadState::Running);
     }
 
-    pub fn set_pending(&self, sync: u32, timeout_instant: Option<u64>) {
+    pub fn set_pending(&self, sync: u32, timeout_instant: TimeoutInstant) {
         self.state
             .set(ThreadState::Pending(PendingContext::new_sync(
                 sync,
-                timeout_instant,
+                Some(timeout_instant),
             )));
     }
 
@@ -198,7 +202,7 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     }
 
     // Return time (in ticks) when the thread is schedulded for timeout
-    pub fn get_timeout_instant(&self) -> Option<u64> {
+    pub fn get_timeout_instant(&self) -> Option<TimeoutInstant> {
         match self.state.get() {
             ThreadState::Pending(reason) => reason.get_timeout(),
             _ => None,
@@ -215,7 +219,7 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     /// * `false` - If the timeout is still in the future or if no timeout is scheduled
     pub fn has_timed_out(&self, sys_ticks: u64) -> bool {
         self.get_timeout_instant()
-            .map(|timeout_ticks| timeout_ticks <= sys_ticks)
+            .map(|timeout| timeout.is_past(sys_ticks))
             .unwrap_or(false)
     }
 

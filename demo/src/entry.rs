@@ -64,8 +64,8 @@ pub extern "C" fn _start() {
     display_control_register();
 
     // init kernel
-    let systick = SysTick::configure_period::<FCPU, FREQ_SYS_TICK>(true);
-    let mut kernel = Kernel::<CortexM, 32>::init(systick);
+    let systick = SysTick::<FREQ_SYS_TICK>::configure_period::<FCPU>(true);
+    let mut kernel = Kernel::<CortexM, 32, FREQ_SYS_TICK>::init(systick);
 
     #[cfg(feature = "signal")]
     let signal_threads = signal::init_threads();

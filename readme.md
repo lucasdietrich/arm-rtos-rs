@@ -250,3 +250,38 @@ Set variable in the `.noinit` section:
 #[link_section = ".noinit"]
 static mut THREAD_STACK1: u32 = 0;
 ```
+
+### Define a KernelSpecs trait
+
+It would be great to have: 
+
+```rs
+pub trait KernelSpecs {
+    const FREQ_SYS_TICK: u32 = 100;
+    const KOBJS: usize = 32;
+}
+
+// CPU: CPU variant
+pub struct Kernel<'a, CPU: CpuVariant, Specs: KernelSpecs>
+where
+    [(); Specs::KOBJS]:,
+    [(); Specs::FREQ_SYS_TICK as usize]:,
+{
+    tasks: sl::List<'a, Thread<'a, CPU>, Runqueue>,
+
+    // systick
+    systick: SysTick<{ Specs::FREQ_SYS_TICK }>,
+
+    // Ticks counter: period: P (ms)
+    ticks: u64,
+
+    idle: Thread<'a, CPU>,
+    // Idle thread
+
+    // Kernel objects (Sync) for synchronization
+    kobj: [Option<Box<dyn KernelObjectTrait<'a, CPU> + 'a>>; Specs::KOBJS],
+}
+```
+
+However the feature is not well supported today, it needs `#![feature(generic_const_exprs)]`
+This is discussed here: <https://github.com/rust-lang/rust/issues/76560>

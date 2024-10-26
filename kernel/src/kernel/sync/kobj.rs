@@ -1,8 +1,7 @@
 use crate::{
     kernel::{
-        kernel::MS_PER_TICK,
         thread::{Thread, Waitqueue},
-        timeout::Timeout,
+        timeout::TimeoutInstant,
         CpuVariant,
     },
     list::singly_linked as sl,
@@ -29,10 +28,7 @@ pub trait KernelObjectTrait<'a, CPU: CpuVariant> {
     fn acquire(
         &mut self,
         thread: &'a Thread<'a, CPU>,
-
-        // TODO, remove ticks + timeout and calculate the timeout_instant directly
-        ticks: u64,
-        timeout: Timeout,
+        timeout_instant: TimeoutInstant,
     ) -> AcquireOutcome;
 
     /// Notify the first thread in the waitqueue or release the primitive
@@ -73,14 +69,13 @@ impl<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> KernelObjectTrait<'a, CPU>
     fn acquire(
         &mut self,
         thread: &'a Thread<'a, CPU>,
-        ticks: u64,
-        timeout: Timeout,
+        timeout_instant: TimeoutInstant,
     ) -> AcquireOutcome {
         let obtained = self.primitive.acquire(thread);
 
         if let Some(swap) = obtained {
             AcquireOutcome::Obtained(swap.into()) // Convert S::Swap into SwapData
-        } else if timeout.is_zero() {
+        } else if timeout_instant.is_zero() {
             AcquireOutcome::NotObtained
         } else {
             // If the object is not available and a non-zero timeout is given
@@ -88,11 +83,6 @@ impl<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> KernelObjectTrait<'a, CPU>
 
             // appending it at the end of the kobj waitqueue.
             self.waitqueue.push_back(thread);
-
-            // Calculate the instant when the thread should be woken up
-            let timeout_instant = timeout
-                .get_ticks()
-                .map(|ms| ticks + (ms as u64 / MS_PER_TICK));
 
             // Mark the thread pending until the given instant
             thread.set_pending(self.identifier, timeout_instant);

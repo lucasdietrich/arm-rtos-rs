@@ -16,7 +16,7 @@ use crate::{
             Syscall,
         },
         thread::{PendingContext, Runqueue, Thread, ThreadState},
-        timeout::Timeout,
+        timeout::{Timeout, TimeoutInstant},
         CpuVariant,
     },
     list::singly_linked as sl,
@@ -54,26 +54,17 @@ impl From<Option<i32>> for SyscallOutcome {
     }
 }
 
-// requires generic_const?? ... unstable feature
-pub trait KernelSpec {
-    const KOBJS: u32;
-}
-
-// TODO make this value a const generic
-// Define the tick duration in milliseconds
-pub const MS_PER_TICK: u64 = 10;
-
 /* This address must be accessible from asm */
 #[used]
 #[no_mangle]
 static mut Z_SYSCALL_FLAG: u32 = 0;
 
 // CPU: CPU variant
-pub struct Kernel<'a, CPU: CpuVariant, const KOBJS: usize> {
+pub struct Kernel<'a, CPU: CpuVariant, const K: usize, const F: u32> {
     tasks: sl::List<'a, Thread<'a, CPU>, Runqueue>,
 
     // systick
-    systick: SysTick,
+    systick: SysTick<F>,
 
     // Ticks counter: period: P (ms)
     ticks: u64,
@@ -82,11 +73,11 @@ pub struct Kernel<'a, CPU: CpuVariant, const KOBJS: usize> {
     idle: Thread<'a, CPU>,
 
     // Kernel objects (Sync) for synchronization
-    kobj: [Option<Box<dyn KernelObjectTrait<'a, CPU> + 'a>>; KOBJS],
+    kobj: [Option<Box<dyn KernelObjectTrait<'a, CPU> + 'a>>; K],
 }
 
-impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
-    pub fn init(systick: SysTick) -> Kernel<'a, CPU, KOBJS> {
+impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
+    pub fn init(systick: SysTick<F>) -> Kernel<'a, CPU, K, F> {
         let idle = Idle::init();
 
         Kernel {
@@ -94,8 +85,12 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             systick,
             ticks: 0,
             idle,
-            kobj: [const { None }; KOBJS],
+            kobj: [const { None }; K],
         }
+    }
+
+    pub fn ms_to_ticks(ms: u32) -> u64 {
+        ms as u64 * F as u64 / 1000
     }
 
     pub fn register_thread(&mut self, thread: &'a Thread<'a, CPU>) {
@@ -283,7 +278,13 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             .get_mut(kobj as usize)
             .and_then(|slot| slot.as_mut())
         {
-            match obj_ref.acquire(thread, ticks, timeout) {
+            // Calculate the instant when the thread should be woken up
+            let timeout_instant = match timeout {
+                Timeout::Forever => TimeoutInstant::new_never(),
+                Timeout::Duration(ms) => TimeoutInstant::new_at(ticks + Self::ms_to_ticks(ms)),
+            };
+
+            match obj_ref.acquire(thread, timeout_instant) {
                 AcquireOutcome::Obtained(swap_data) => {
                     SyscallOutcome::Completed(swap_data.to_syscall_ret())
                 }
@@ -336,24 +337,25 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
 
         match syscall {
             Syscall::Kernel(KernelSyscall::Yield) => SyscallOutcome::Completed(0),
-            Syscall::Kernel(KernelSyscall::Sleep { ms }) => match ms {
-                0 => SyscallOutcome::Completed(0),
-                u32::MAX => {
-                    thread.state.set(ThreadState::Stopped);
-                    SyscallOutcome::Completed(0)
-                }
-                _ => {
-                    let expiration_time = self.get_ticks() + ms as u64 / MS_PER_TICK;
+            Syscall::Kernel(KernelSyscall::Sleep { ms }) => {
+                let timeout = Timeout::from(ms);
+                match timeout {
+                    Timeout::Forever => {
+                        thread.state.set(ThreadState::Stopped);
+                        SyscallOutcome::Completed(0)
+                    }
+                    Timeout::Duration(0) => SyscallOutcome::Completed(0),
+                    Timeout::Duration(ms) => {
+                        thread
+                            .state
+                            .set(ThreadState::Pending(PendingContext::new_timeout(
+                                TimeoutInstant::new_at(self.get_ticks() + Self::ms_to_ticks(ms)),
+                            )));
 
-                    thread
-                        .state
-                        .set(ThreadState::Pending(PendingContext::new_timeout(Some(
-                            expiration_time,
-                        ))));
-
-                    SyscallOutcome::Pending
+                        SyscallOutcome::Pending
+                    }
                 }
-            },
+            }
             Syscall::Kernel(KernelSyscall::SyncCreate { prim }) => SyscallOutcome::Completed(
                 match prim {
                     SyncPrimitiveCreate::Sync => self.kobj_create_default::<Sync>(),

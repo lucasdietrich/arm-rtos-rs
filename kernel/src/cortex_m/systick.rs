@@ -20,24 +20,24 @@ pub struct SysTickRegs {
     pub calib: RW<u32>,
 }
 
-pub struct SysTick;
+pub struct SysTick<const FREQ_SYS_TICK: u32>;
 
 const ENABLE_POS: u32 = 0;
 const TICKINT_POS: u32 = 1;
 const CLKSOURCE_POS: u32 = 2;
 const COUNTFLAG_POS: u32 = 16;
 
-impl SysTick {
+impl<const FREQ_SYS_TICK: u32> SysTick<FREQ_SYS_TICK> {
     pub const PTR: *const SysTickRegs = SYSTICK as *const _;
 
-    pub fn configure_period<const FCPU: u32, const FSYSCLOCK: u32>(interrupt: bool) -> SysTick {
+    pub fn configure_period<const FCPU: u32>(interrupt: bool) -> SysTick<FREQ_SYS_TICK> {
         const SOURCE: u32 = 1 << CLKSOURCE_POS;
         const ENABLE: u32 = 1 << ENABLE_POS;
 
         let tickint: u32 = if interrupt { 1 << TICKINT_POS } else { 0 };
 
         unsafe {
-            Self.load.write(FCPU / FSYSCLOCK);
+            Self.load.write(FCPU / FREQ_SYS_TICK);
             Self.val.write(0);
             Self.ctrl.write(SOURCE | ENABLE | tickint);
         }
@@ -58,7 +58,7 @@ impl SysTick {
     }
 }
 
-impl Deref for SysTick {
+impl<const FREQ_SYS_TICK: u32> Deref for SysTick<FREQ_SYS_TICK> {
     type Target = SysTickRegs;
 
     #[inline(always)]
