@@ -45,6 +45,8 @@ pub enum KernelSyscallId {
 #[derive(FromPrimitive)]
 pub enum IoSyscallId {
     Print = 0,
+    Read1 = 1,
+    Read = 2,
 }
 
 #[derive(Debug)]
@@ -108,6 +110,17 @@ impl Syscall {
                         let size = params.r1 as usize;
                         IoSyscall::Print { ptr, len: size }
                     }
+                    IoSyscallId::Read => {
+                        let ptr = params.r0 as *mut u8;
+                        let size = params.r1 as usize;
+                        let timeout = Timeout::try_from(params.r2 as i32).unwrap_or_default();
+                        IoSyscall::Read {
+                            ptr,
+                            len: size,
+                            timeout,
+                        }
+                    }
+                    IoSyscallId::Read1 => IoSyscall::Read1,
                 })
             }),
             SyscallId::Driver => Some(Syscall::Driver),
@@ -157,5 +170,14 @@ pub enum KernelSyscall {
 
 #[derive(Debug)]
 pub enum IoSyscall {
-    Print { ptr: *const u8, len: usize },
+    Print {
+        ptr: *const u8,
+        len: usize,
+    },
+    Read1,
+    Read {
+        ptr: *mut u8,
+        len: usize,
+        timeout: Timeout,
+    },
 }

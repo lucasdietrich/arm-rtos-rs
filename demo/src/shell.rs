@@ -19,7 +19,7 @@ pub fn init_shell_thread<'a, CPU: CpuVariant>() -> Thread<'a, CPU> {
 
 extern "C" fn mytask_shell(_arg: *mut c_void) -> ! {
     loop {
-        if let Some(byte) = stdio::read() {
+        if let Some(byte) = userspace::k_stdio_read1() {
             println!("recv: {}", Hex::U8(byte));
 
             let mut syscall_ret = 0;

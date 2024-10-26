@@ -167,6 +167,16 @@ pub fn k_stop() -> ! {
     unreachable!()
 }
 
+pub fn k_stdio_read1() -> Option<u8> {
+    let ret =
+        unsafe { z_call_svc_4::<{ SyscallId::Io as u8 }>(0, 0, 0, IoSyscallId::Read1 as u32) };
+    if ret < 0 {
+        None
+    } else {
+        Some(ret as u8)
+    }
+}
+
 // pub fn z_user_print(args: Arguments<'_>, nl: bool) {
 
 // }
