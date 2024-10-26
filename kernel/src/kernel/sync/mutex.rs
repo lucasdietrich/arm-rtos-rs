@@ -3,13 +3,19 @@
 
 use crate::kernel::{thread::Thread, CpuVariant};
 
-use super::{SwapData, SyncPrimitive};
+use super::{traits::ReleaseOutcome, SwapData, Swappable, SyncPrimitive};
 
 /// A token representing the ownership of a mutex.
 ///
 /// This struct is used internally to indicate that a thread has successfully acquired
 /// ownership of a `Mutex`. It serves as a marker in synchronization operations.
 pub struct Ownership;
+
+impl Swappable for Ownership {
+    fn to_syscall_ret(&self) -> i32 {
+        0
+    }
+}
 
 impl From<Ownership> for SwapData {
     fn from(_ownership: Ownership) -> SwapData {
@@ -33,7 +39,6 @@ impl TryFrom<SwapData> for Ownership {
 /// The `Mutex` structure keeps track of the owning thread and ensures that only one
 /// thread can access the protected data at a time. It implements the `SyncPrimitive` trait
 /// to integrate with the kernel's synchronization mechanisms.
-#[derive(Default)]
 pub struct Mutex<'a, CPU: CpuVariant> {
     owner: Option<&'a Thread<'a, CPU>>,
 }
@@ -42,6 +47,12 @@ impl<'a, CPU: CpuVariant> Mutex<'a, CPU> {
     /// Creates a new `Mutex` with no owner.
     pub const fn new() -> Self {
         Mutex { owner: None }
+    }
+}
+
+impl<'a, CPU: CpuVariant> Default for Mutex<'a, CPU> {
+    fn default() -> Self {
+        Mutex::new()
     }
 }
 
@@ -55,12 +66,12 @@ impl<'a, CPU: CpuVariant> SyncPrimitive<'a, CPU> for Mutex<'a, CPU> {
     /// # Arguments
     ///
     /// * `_released` - The ownership token to be consumed upon release.
-    fn release(&mut self, _released: Ownership) -> Result<(), Ownership> {
+    fn release(&mut self, _released: Ownership) -> Result<ReleaseOutcome<Ownership>, Ownership> {
         if self.owner.is_none() {
             Err(Ownership)
         } else {
             self.owner = None;
-            Ok(())
+            Ok(ReleaseOutcome::Released)
         }
     }
 

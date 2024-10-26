@@ -1,4 +1,9 @@
-use super::{stack::StackInfo, sync::SwapData, CpuVariant, InitStackFrameTrait, ThreadEntry};
+use super::{
+    errno::Kerr,
+    stack::StackInfo,
+    sync::{SwapData, Swappable},
+    CpuVariant, InitStackFrameTrait, ThreadEntry,
+};
 use crate::list::{self, singly_linked as sl};
 use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};
 
@@ -13,6 +18,11 @@ pub enum ThreadState {
 pub struct PendingContext {
     sync_kobj_index: Option<u32>,
     timeout_instant: Option<u64>,
+}
+
+pub enum UnpendReason {
+    Timeout,
+    Swap(SwapData),
 }
 
 pub struct Runqueue;
@@ -115,9 +125,6 @@ pub struct Thread<'a, CPU: CpuVariant> {
     /// Thread priority (preemptive/cooperative)
     pub priority: ThreadPriority,
 
-    /// Data passed between threads during synchronization
-    pub swap_data: Cell<SwapData>,
-
     /// Stats for the current thread
     #[cfg(feature = "kernel-stats")]
     pub stats: ThreadStats,
@@ -160,7 +167,6 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
             priority: ThreadPriority::from(raw_priority),
             state: Cell::new(ThreadState::Stopped),
             runqueue_next: sl::Link::empty(),
-            swap_data: Cell::new(SwapData::Empty),
             waitqueue_next: sl::Link::empty(),
             #[cfg(feature = "kernel-stats")]
             stats: ThreadStats::default(),
@@ -224,6 +230,7 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     }
 
     pub fn set_syscall_return_value(&self, _ret: i32) {
+        // Make sure a syscall is pending, otherwise it could break the stack
         todo!()
     }
 
@@ -232,12 +239,17 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         ptr::write(self.stack_ptr.get().add(0), ret as u32);
     }
 
-    pub fn unpend(&self, swap_data: SwapData) {
+    pub fn unpend<S: Swappable>(&self, swap: &S) {
         self.set_ready();
-        self.swap_data.set(swap_data);
         unsafe {
-            // TODO, might depend on the released value
-            self.set_syscall_return_value_unchecked(0);
+            self.set_syscall_return_value_unchecked(swap.to_syscall_ret());
+        }
+    }
+
+    pub fn unpend_timeout(&self) {
+        self.set_ready();
+        unsafe {
+            self.set_syscall_return_value_unchecked(Kerr::TimedOut as i32);
         }
     }
 }

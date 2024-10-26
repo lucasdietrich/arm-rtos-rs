@@ -1,5 +1,7 @@
 use crate::kernel::{sync::SyncPrimitive, thread::Thread, CpuVariant};
 
+use super::traits::ReleaseOutcome;
+
 pub struct Semaphore {
     cur: u32,
     max: u32,
@@ -14,10 +16,10 @@ impl Semaphore {
 impl<'a, CPU: CpuVariant> SyncPrimitive<'a, CPU> for Semaphore {
     type Swap = ();
 
-    fn release(&mut self, _released: ()) -> Result<(), ()> {
+    fn release(&mut self, _released: ()) -> Result<ReleaseOutcome<()>, ()> {
         self.cur = (self.cur + 1).max(self.max);
 
-        Ok(())
+        Ok(ReleaseOutcome::Released)
     }
 
     fn acquire(&mut self, _thread: &'a Thread<'a, CPU>) -> Option<()> {

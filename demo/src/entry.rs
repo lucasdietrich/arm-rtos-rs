@@ -1,12 +1,11 @@
-use core::{ffi::c_void, fmt::Write};
+use core::fmt::Write;
 
 use cortex_m::register::control::Control;
 use kernel::{
     cortex_m::{
-        arch::CortexM, cortex_m_rt::FCPU, cpu::Cpu, interrupts, irqn::SysIrqn, scb::SCB,
-        systick::SysTick,
+        arch::CortexM, cortex_m_rt::FCPU, interrupts, irqn::SysIrqn, scb::SCB, systick::SysTick,
     },
-    kernel::{kernel::Kernel, stack::Stack, thread::Thread, timeout::Timeout, userspace},
+    kernel::kernel::Kernel,
     serial::{SerialConfig, SerialTrait},
     serial_utils::Hex,
     soc::mps2_an385::{UartDevice, UART0},
@@ -14,9 +13,11 @@ use kernel::{
 };
 use kernel::{print, println};
 
+use crate::{shell, signal};
+
 pub const FREQ_SYS_TICK: u32 = 100; // Hz
 
-const USER_THREAD_SIZE: usize = 16384;
+pub const USER_THREAD_SIZE: usize = 16384;
 
 #[no_mangle]
 pub extern "C" fn _start() {
@@ -66,153 +67,20 @@ pub extern "C" fn _start() {
     let systick = SysTick::configure_period::<FCPU, FREQ_SYS_TICK>(true);
     let mut kernel = Kernel::<CortexM, 32>::init(systick);
 
-    // // initialize task1
-    // #[link_section = ".noinit"]
-    // static mut THREAD_STACK1: Stack<USER_THREAD_SIZE> = Stack::uninit();
-    // let stack1 = unsafe { THREAD_STACK1.get_info() };
-    // let task1 = Thread::init(&stack1, mytask_entry, 0xaaaa0000 as *mut c_void, 0);
-    // kernel.register_thread(&task1);
+    #[cfg(feature = "signal")]
+    let signal_threads = signal::init_threads();
+    #[cfg(feature = "signal")]
+    for thread in signal_threads.iter() {
+        kernel.register_thread(&thread);
+    }
 
-    // // initialize task2
-    // #[link_section = ".noinit"]
-    // static mut THREAD_STACK2: Stack<USER_THREAD_SIZE> = Stack::uninit();
-    // let stack2 = unsafe { THREAD_STACK2.get_info() };
-    // let task2 = Thread::init(&stack2, mytask_shell, 0xbbbb0000 as *mut c_void, 0);
-    // kernel.register_thread(&task2);
-
-    // // initialize task3
-    // #[link_section = ".noinit"]
-    // static mut THREAD_STACK3: Stack<USER_THREAD_SIZE> = Stack::uninit();
-    // let stack3 = unsafe { THREAD_STACK3.get_info() };
-    // let task3 = Thread::init(&stack3, mytask_entry3, 0xcccc0000 as *mut c_void, 0);
-    // kernel.register_thread(&task3);
-
-    // // initialize task4
-    // #[link_section = ".noinit"]
-    // static mut THREAD_STACK4: Stack<USER_THREAD_SIZE> = Stack::uninit();
-    // let stack4 = unsafe { THREAD_STACK4.get_info() };
-    // let task4 = Thread::init(&stack4, mytask_pend, 0xdddd0000 as *mut c_void, 0);
-    // kernel.register_thread(&task4);
-
-    // // initialize task5
-    // #[link_section = ".noinit"]
-    // static mut THREAD_STACK5: Stack<USER_THREAD_SIZE> = Stack::uninit();
-    // let stack5 = unsafe { THREAD_STACK5.get_info() };
-    // let task5 = Thread::init(&stack5, mytask_sync, 0xeeee0000 as *mut c_void, 0);
-    // kernel.register_thread(&task5);
-
-    // initialize task6
-    #[link_section = ".noinit"]
-    static mut THREAD_STACK6: Stack<USER_THREAD_SIZE> = Stack::uninit();
-    let stack6 = unsafe { THREAD_STACK6.get_info() };
-    let task6 = Thread::init(&stack6, mytask_mutex, 0xffff0000 as *mut c_void, 0);
-    kernel.register_thread(&task6);
-
-    // initialize task7
-    #[link_section = ".noinit"]
-    static mut THREAD_STACK7: Stack<USER_THREAD_SIZE> = Stack::uninit();
-    let stack7 = unsafe { THREAD_STACK7.get_info() };
-    let task7 = Thread::init(&stack7, mytask_mutex, 0x11110000 as *mut c_void, 0);
-    kernel.register_thread(&task7);
+    #[cfg(feature = "shell")]
+    let shell_thread = shell::init_shell_thread();
+    #[cfg(feature = "shell")]
+    kernel.register_thread(&shell_thread);
 
     loop {
         kernel.kernel_loop();
-    }
-}
-
-extern "C" fn mytask_mutex(arg: *mut c_void) -> ! {
-    let mutex = userspace::k_mutex_create();
-
-    loop {
-        let ret = userspace::k_mutex_lock(mutex, Timeout::from_ms(1000));
-        println!("[{}] locking {} -> {}", Hex::U32(arg as u32), mutex, ret);
-
-        userspace::k_sleep(Timeout::from_ms(1000));
-
-        let ret = userspace::k_mutex_unlock(mutex);
-        println!("[{}] unlocking {} -> {}", Hex::U32(arg as u32), mutex, ret);
-
-        userspace::k_sleep(Timeout::from_ms(1000));
-    }
-}
-
-extern "C" fn mytask_shell(_arg: *mut c_void) -> ! {
-    loop {
-        if let Some(byte) = stdio::read() {
-            println!("recv: {}", Hex::U8(byte));
-
-            let mut syscall_ret = 0;
-
-            match byte {
-                b'y' => {
-                    println!("yield !");
-                    userspace::k_yield();
-                }
-                b's' => {
-                    println!("SVC sleep");
-                    syscall_ret = userspace::k_sleep(Timeout::from_ms(1000));
-                }
-                b'w' => {
-                    println!("SVC print");
-                    let msg = "Hello using SVC !!\n";
-                    syscall_ret = userspace::k_print(msg);
-                }
-                _ => {}
-            }
-
-            println!("syscall_ret: {}", Hex::U32(syscall_ret as u32));
-        }
-
-        userspace::k_sleep(Timeout::from_ms(100));
-    }
-}
-
-extern "C" fn mytask_entry(arg: *mut c_void) -> ! {
-    println!("MyTask arg: {}", Hex::U32(arg as u32),);
-
-    display_control_register();
-
-    let regs = Cpu::registers();
-    Cpu::print_registers(&regs);
-
-    let mut counter: u32 = 0;
-
-    loop {
-        println!("[{}] counter: {}", Hex::U32(arg as u32), Hex::U32(counter));
-        counter = counter.wrapping_add(1);
-
-        let svc_ret = userspace::k_sleep(Timeout::from_ms(1000));
-        println!("svc_ret: {}", svc_ret);
-    }
-}
-
-extern "C" fn mytask_pend(arg: *mut c_void) -> ! {
-    let kobj = userspace::k_sync_create();
-    println!("kobj {}", kobj);
-
-    loop {
-        let ret = userspace::k_pend(kobj, Timeout::Forever);
-        println!("pend {}", ret);
-    }
-}
-
-extern "C" fn mytask_sync(arg: *mut c_void) -> ! {
-    let kobj = 0_i32;
-
-    loop {
-        userspace::k_sleep(Timeout::from_ms(2000));
-        let ret = userspace::k_sync(kobj);
-        println!("sync {}", ret);
-    }
-}
-
-extern "C" fn mytask_entry3(arg: *mut c_void) -> ! {
-    loop {
-        println!("MyTask arg: {}, sleep", Hex::U32(arg as u32),);
-
-        let msg = "Hello using SVC !!\n";
-        userspace::k_print(msg);
-        userspace::k_sleep(Timeout::from_ms(1000));
     }
 }
 

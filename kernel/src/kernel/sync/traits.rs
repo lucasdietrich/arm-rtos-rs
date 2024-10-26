@@ -6,10 +6,9 @@ use crate::kernel::{thread::Thread, CpuVariant};
 /// A trait for types that can be passed between threads during synchronization.
 ///
 /// Any type that implements `Into<SwapData>` automatically implements `Swappable`.
-pub trait Swappable: Into<SwapData> + TryFrom<SwapData, Error = SwapData> {}
-
-/// Automatically implements `Swappable` for any type that implements `Into<SwapData>`.
-impl<T> Swappable for T where T: Into<SwapData> + TryFrom<SwapData, Error = SwapData> {}
+pub trait Swappable: Into<SwapData> + TryFrom<SwapData, Error = SwapData> {
+    fn to_syscall_ret(&self) -> i32;
+}
 
 /// Implements `Into<SwapData>` for the unit type `()`.
 ///
@@ -29,6 +28,20 @@ impl TryFrom<SwapData> for () {
             _ => Err(swap),
         }
     }
+}
+
+impl Swappable for () {
+    fn to_syscall_ret(&self) -> i32 {
+        0
+    }
+}
+
+pub enum ReleaseOutcome<S: Swappable> {
+    /// The primitive has been released
+    Released,
+    /// The primitive has been notified to the first thread in the waitqueue
+    /// but it is still available for other threads (e.g. signaling)
+    Notified(S),
 }
 
 /// A synchronization primitive that allows threads to synchronize access to shared resources.
@@ -75,7 +88,13 @@ pub trait SyncPrimitive<'a, CPU: CpuVariant> {
     ///
     /// # Returns
     ///
-    /// - `Ok(())` if the primitive was successfully released.
+    /// - `Ok(ReleaseOutcome::Released)` if the primitive was released successfully.
+    /// - `Ok(ReleaseOutcome::Notified(Self::Swap))` if the primitive was notified successfully
+    ///   and the swap value is still available for other threads.
     /// - `Err(Self::Swap)` if the primitive was not released successfully.
-    fn release(&mut self, released: Self::Swap) -> Result<(), Self::Swap>;
+    fn release(&mut self, released: Self::Swap) -> Result<ReleaseOutcome<Self::Swap>, Self::Swap>;
+
+    // fn cancel(&mut self) {
+    //     todo!()
+    // }
 }

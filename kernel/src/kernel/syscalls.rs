@@ -33,6 +33,10 @@ pub enum KernelSyscallId {
     Sync = 4,
     // Make thread pend on a kernel object
     Pend = 5,
+    // Clone the current thread into a new thread
+    Fork = 6,
+    // Stok the current thread
+    Stop = 7,
     // // Uptime
     // Uptime = 100,
 }
@@ -77,6 +81,7 @@ impl Syscall {
                     KernelSyscallId::Sync => {
                         SyncPrimitiveType::from_u32(params.r2).map(|sync_prim_type| {
                             KernelSyscall::Sync {
+                                arg: params.r0,
                                 kobj: params.r1 as i32,
                                 prim: sync_prim_type,
                             }
@@ -91,6 +96,8 @@ impl Syscall {
                             }
                         })
                     }
+                    KernelSyscallId::Fork => Some(KernelSyscall::Fork),
+                    KernelSyscallId::Stop => Some(KernelSyscall::Stop),
                 }
                 .map(Syscall::Kernel)
             }),
@@ -137,12 +144,15 @@ pub enum KernelSyscall {
     Sync {
         prim: SyncPrimitiveType,
         kobj: i32,
+        arg: u32, // Argument to the sync primitive (r0)
     },
     Pend {
         prim: SyncPrimitiveType,
         kobj: i32,
         timeout: Timeout,
     },
+    Fork,
+    Stop,
 }
 
 #[derive(Debug)]

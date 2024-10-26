@@ -62,9 +62,8 @@ pub enum Kerr {
     EBADRQC = -56,       /* Invalid request code */
     EBADSLT = -57,       /* Invalid slot */
 
-    TimedOut = -116, /* Connection timed out */
-
-    NotSupported = -524, /* Operation not supported */
+    TimedOut = -116,     /* Connection timed out */
+    NotSupported = -134, /* Operation not supported */
 }
 
 pub const EWOULDBLOCK: Kerr = Kerr::TryAgain; /* Operation would block */

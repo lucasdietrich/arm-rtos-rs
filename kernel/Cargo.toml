@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["mps2-an385", "kernel-stats"]
+default = ["mps2-an385"]
 mps2-an385 = ["cm3"]
 cm3 = []
-kernel-stats = []
 kernel-debug = []
+kernel-stats = []
 
 [dependencies]
 num-traits = { version =  "0.2", default-features = false}

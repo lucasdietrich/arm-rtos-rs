@@ -123,6 +123,29 @@ pub fn k_sync(kobj: i32) -> i32 {
     }
 }
 
+pub fn k_signal(kobj: i32, signal_value: u32) -> i32 {
+    unsafe {
+        z_call_svc_kernel_4(
+            signal_value,
+            kobj as u32,
+            SyncPrimitiveType::Signal as u32,
+            KernelSyscallId::Sync as u32,
+        )
+    }
+}
+
+pub fn k_signal_poll(kobj: i32, timeout: Timeout) -> i32 {
+    let r0: i32 = timeout.into();
+    unsafe {
+        z_call_svc_kernel_4(
+            r0 as u32,
+            kobj as u32,
+            SyncPrimitiveType::Signal as u32,
+            KernelSyscallId::Pend as u32,
+        )
+    }
+}
+
 pub fn k_pend(kobj: i32, timeout: Timeout) -> i32 {
     let r0: i32 = timeout.into();
     unsafe {
@@ -133,6 +156,15 @@ pub fn k_pend(kobj: i32, timeout: Timeout) -> i32 {
             KernelSyscallId::Pend as u32,
         )
     }
+}
+
+pub fn k_fork() -> i32 {
+    unsafe { z_call_svc_kernel_4(0, 0, 0, KernelSyscallId::Fork as u32) }
+}
+
+pub fn k_stop() -> ! {
+    let _ = unsafe { z_call_svc_kernel_4(0, 0, 0, KernelSyscallId::Stop as u32) };
+    unreachable!()
 }
 
 // pub fn z_user_print(args: Arguments<'_>, nl: bool) {

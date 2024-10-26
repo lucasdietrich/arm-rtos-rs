@@ -8,9 +8,9 @@ use crate::{
     list::singly_linked as sl,
 };
 
-use super::{SwapData, SyncPrimitive};
+use super::{traits::ReleaseOutcome, SwapData, SyncPrimitive};
 
-pub enum AcquireResult {
+pub enum AcquireOutcome {
     /// The thread has obtained the primitive
     Obtained(SwapData),
     /// The thread has not obtained the primitive
@@ -29,16 +29,21 @@ pub trait KernelObjectTrait<'a, CPU: CpuVariant> {
     fn acquire(
         &mut self,
         thread: &'a Thread<'a, CPU>,
+
+        // TODO, remove ticks + timeout and calculate the timeout_instant directly
         ticks: u64,
         timeout: Timeout,
-    ) -> AcquireResult;
+    ) -> AcquireOutcome;
 
     /// Notify the first thread in the waitqueue or release the primitive
     /// if no thread is waiting.
     ///
     /// Returns the error code if swap data was properly converted to the expected type.
     /// Otherwise, returns the swap data back to the primitive.
-    fn notify_or_release(&mut self, swap_data: SwapData) -> Result<(), SwapData>;
+    fn release(&mut self, swap_data: SwapData) -> Result<(), SwapData>;
+
+    // TODO: Cancel all thread waiting on the kernel object
+    // fn cancel(&mut self);
 }
 
 /// Implement a concrete synchronization primitive
@@ -70,13 +75,13 @@ impl<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> KernelObjectTrait<'a, CPU>
         thread: &'a Thread<'a, CPU>,
         ticks: u64,
         timeout: Timeout,
-    ) -> AcquireResult {
+    ) -> AcquireOutcome {
         let obtained = self.primitive.acquire(thread);
 
         if let Some(swap) = obtained {
-            AcquireResult::Obtained(swap.into()) // Convert S::Swap into SwapData
+            AcquireOutcome::Obtained(swap.into()) // Convert S::Swap into SwapData
         } else if timeout.is_zero() {
-            AcquireResult::NotObtained
+            AcquireOutcome::NotObtained
         } else {
             // If the object is not available and a non-zero timeout is given
             // mark the thread as pending and set the timeout
@@ -92,21 +97,23 @@ impl<'a, S: SyncPrimitive<'a, CPU>, CPU: CpuVariant> KernelObjectTrait<'a, CPU>
             // Mark the thread pending until the given instant
             thread.set_pending(self.identifier, timeout_instant);
 
-            AcquireResult::Pending
+            AcquireOutcome::Pending
         }
     }
 
-    fn notify_or_release(&mut self, swap_data: SwapData) -> Result<(), SwapData> {
-        let unpended_thread = self.waitqueue.pop_head();
-        if let Some(thread) = unpended_thread {
-            thread.unpend(swap_data);
-        } else {
-            // Try convert SwapData into S::Swap, if it fails, return the SwapData back
-            let swap = swap_data.try_into()?;
+    fn release(&mut self, swap_data: SwapData) -> Result<(), SwapData> {
+        // Try convert SwapData into S::Swap, if it fails, return the SwapData back
+        let mut swap: S::Swap = swap_data.try_into()?;
 
-            // Try to release the primitive, if it fails, return the SwapData back
-            self.primitive.release(swap).map_err(|s| s.into())?;
+        while let Some(unpended_thread) = self.waitqueue.pop_head() {
+            unpended_thread.unpend(&swap);
+            // Try to notify/release the primitive, if it fails, return the SwapData back
+            swap = match self.primitive.release(swap).map_err(|s| s.into())? {
+                ReleaseOutcome::Released => break,
+                ReleaseOutcome::Notified(swap) => swap,
+            }
         }
+
         Ok(())
     }
 

@@ -36,7 +36,7 @@ impl InitStackFrameTrait for __basic_sf {
             (*sf).r3 = UNDEFINED_MARKER;
             (*sf).r12 = UNDEFINED_MARKER;
             (*sf).lr = LR_DEFAULT;
-            (*sf).pc = entry as u32; // return address: task entry function address
+            (*sf).pc = entry as usize as u32; // return address: task entry function address
             (*sf).xpsr = XPSR;
         };
     }

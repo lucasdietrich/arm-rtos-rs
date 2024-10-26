@@ -8,15 +8,14 @@ use crate::{
         errno::Kerr,
         idle::Idle,
         sync::{
-            KernelObject, KernelObjectTrait, Mutex, Semaphore, Signal, SwapData, Sync,
+            KernelObject, KernelObjectTrait, Mutex, Semaphore, Signal, SignalValue, SwapData, Sync,
             SyncPrimitive,
         },
         syscalls::{
             IoSyscall, KernelSyscall, SVCCallParams, SyncPrimitiveCreate, SyncPrimitiveType,
             Syscall,
         },
-        thread::Runqueue,
-        thread::{PendingContext, Thread, ThreadState},
+        thread::{PendingContext, Runqueue, Thread, ThreadState},
         timeout::Timeout,
         CpuVariant,
     },
@@ -27,7 +26,7 @@ use crate::{
 #[cfg(feature = "kernel-debug")]
 use crate::println;
 
-use super::sync::AcquireResult;
+use super::sync::AcquireOutcome;
 
 pub enum SupervisorCallReason {
     Syscall(SVCCallParams),
@@ -265,24 +264,31 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             })
     }
 
+    fn kobj_create_default<S>(&mut self) -> Option<i32>
+    where
+        S: SyncPrimitive<'a, CPU> + Default + 'a,
+    {
+        self.kobj_create(S::default())
+    }
+
     fn kobj_acquire(
         &mut self,
         kobj: i32,
         thread: &'a Thread<'a, CPU>,
-        ticks: u64,
         timeout: Timeout,
     ) -> SyscallOutcome {
+        let ticks = self.get_ticks();
         if let Some(obj_ref) = self
             .kobj
             .get_mut(kobj as usize)
             .and_then(|slot| slot.as_mut())
         {
             match obj_ref.acquire(thread, ticks, timeout) {
-                AcquireResult::Obtained(swap_data) => {
+                AcquireOutcome::Obtained(swap_data) => {
                     SyscallOutcome::Completed(swap_data.to_syscall_ret())
                 }
-                AcquireResult::NotObtained => SyscallOutcome::Completed(Kerr::TryAgain as i32),
-                AcquireResult::Pending => SyscallOutcome::Pending,
+                AcquireOutcome::NotObtained => SyscallOutcome::Completed(Kerr::TryAgain as i32),
+                AcquireOutcome::Pending => SyscallOutcome::Pending,
             }
         } else {
             // Invalid kernel object
@@ -296,7 +302,7 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             .get_mut(kobj as usize)
             .and_then(|slot| slot.as_mut())
         {
-            match obj_ref.notify_or_release(swap_data) {
+            match obj_ref.release(swap_data) {
                 Ok(_) => Kerr::Success,
                 Err(_) => Kerr::NotSupported,
             }
@@ -322,8 +328,6 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
         thread: &'a Thread<'a, CPU>,
         syscall: Syscall,
     ) -> SyscallOutcome {
-        let ticks = self.get_ticks();
-
         #[cfg(feature = "kernel-debug")]
         println!("{:?}", syscall);
 
@@ -352,12 +356,12 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
             },
             Syscall::Kernel(KernelSyscall::SyncCreate { prim }) => SyscallOutcome::Completed(
                 match prim {
-                    SyncPrimitiveCreate::Sync => self.kobj_create(Sync),
-                    SyncPrimitiveCreate::Signal => self.kobj_create(Signal::new()),
+                    SyncPrimitiveCreate::Sync => self.kobj_create_default::<Sync>(),
+                    SyncPrimitiveCreate::Signal => self.kobj_create_default::<Signal>(),
+                    SyncPrimitiveCreate::Mutex => self.kobj_create_default::<Mutex<'a, CPU>>(),
                     SyncPrimitiveCreate::Semaphore { init, max } => {
                         self.kobj_create(Semaphore::new(init, max))
                     }
-                    SyncPrimitiveCreate::Mutex => self.kobj_create(Mutex::new()),
                 }
                 .unwrap_or(Kerr::NoMemory as i32),
             ),
@@ -365,24 +369,29 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                 prim: _, // sync_prim_type
                 kobj,
                 timeout,
-            }) => self.kobj_acquire(kobj, thread, ticks, timeout),
-            Syscall::Kernel(KernelSyscall::Sync { prim, kobj }) => {
-                match prim {
-                    SyncPrimitiveType::Sync => {
-                        Self::kobj_release_notify(self, kobj, SwapData::Empty)
-                    }
-                    SyncPrimitiveType::Signal => {
-                        // Customize the signal value to 1
-                        let value = 1;
-                        Self::kobj_release_notify(self, kobj, SwapData::Signal(value))
-                    }
-                    SyncPrimitiveType::Semaphore => {
-                        Self::kobj_release_notify(self, kobj, SwapData::Empty)
-                    }
-                    SyncPrimitiveType::Mutex => {
-                        Self::kobj_release_notify(self, kobj, SwapData::Ownership)
-                    }
-                }
+            }) => self.kobj_acquire(kobj, thread, timeout),
+            Syscall::Kernel(KernelSyscall::Sync { arg, prim, kobj }) => {
+                let swap_data = match prim {
+                    SyncPrimitiveType::Sync => SwapData::Empty,
+                    SyncPrimitiveType::Signal => SwapData::Signal(SignalValue::new(arg)),
+                    SyncPrimitiveType::Semaphore => SwapData::Empty,
+                    SyncPrimitiveType::Mutex => SwapData::Ownership,
+                };
+                self.kobj_release_notify(kobj, swap_data)
+            }
+            Syscall::Kernel(KernelSyscall::Stop) => {
+                thread.state.set(ThreadState::Stopped);
+                SyscallOutcome::Completed(0)
+            }
+            Syscall::Kernel(KernelSyscall::Fork) => {
+                // 1. Allocate stack + thread
+                // 2. Clone (clone) the thread
+                // 3. Set stack pointer for forked thread
+                // 4. Set syscall return var for forked thread
+                // 5. register fork
+                // 6. return from syscall
+
+                SyscallOutcome::Completed(Kerr::NotSupported as i32)
             }
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
                 // rebuild &[u8] from (string and len)
@@ -421,10 +430,7 @@ impl<'a, CPU: CpuVariant, const KOBJS: usize> Kernel<'a, CPU, KOBJS> {
                     }
                 }
 
-                thread.set_ready();
-                unsafe {
-                    thread.set_syscall_return_value_unchecked(Kerr::TimedOut as i32);
-                }
+                thread.unpend_timeout();
             }
         }
     }
