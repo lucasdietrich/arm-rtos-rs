@@ -1,3 +1,8 @@
+//! Kernel module for the embedded operating system.
+//!
+//! This module contains the core implementation of the kernel, including the scheduler, syscall handling,
+//! thread management, and synchronization primitives.
+
 use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
 
 use alloc::{alloc::Global, boxed::Box};
@@ -28,24 +33,38 @@ use crate::println;
 
 use super::sync::AcquireOutcome;
 
+/// Represents the reason why the supervisor (kernel) was called.
+///
+/// This enum is used to distinguish between different reasons for entering the kernel from user mode,
+/// such as a syscall or an interrupt.
 pub enum SupervisorCallReason {
+    /// A syscall was invoked by the user process.
     Syscall(SVCCallParams),
+    /// An interrupt occurred.
     Interrupted,
 }
 
+/// The result of the scheduler's decision on which process to run next.
 pub enum SchedulerVerdict<'a, CPU: CpuVariant> {
+    /// Run the specified process (thread).
     RunProcess(&'a Thread<'a, CPU>),
+    /// No ready process to run; enter idle mode.
     Idle,
 }
 
+/// Represents the outcome of a syscall execution.
 pub enum SyscallOutcome {
-    // Syscall completed immediately with the given return value
+    /// Syscall completed immediately with the given return value.
     Completed(i32),
-    // Syscall made the thread pending and is waiting for a signal to complete
+    /// Syscall made the thread pending and is waiting for a signal to complete.
     Pending,
 }
 
 impl From<Option<i32>> for SyscallOutcome {
+    /// Converts an `Option<i32>` into a `SyscallOutcome`.
+    ///
+    /// If the option is `Some(ret)`, returns `SyscallOutcome::Completed(ret)`.
+    /// If the option is `None`, returns `SyscallOutcome::Pending`.
     fn from(value: Option<i32>) -> Self {
         match value {
             Some(ret) => SyscallOutcome::Completed(ret),
@@ -54,29 +73,48 @@ impl From<Option<i32>> for SyscallOutcome {
     }
 }
 
-/* This address must be accessible from asm */
+/// A flag used to indicate if a syscall has been invoked by a user process.
+///
+/// This address must be accessible from assembly code.
 #[used]
 #[no_mangle]
 static mut Z_SYSCALL_FLAG: u32 = 0;
 
-// CPU: CPU variant
+/// The core kernel structure that manages threads, scheduling, and synchronization.
+///
+/// # Type Parameters
+///
+/// * `'a` - The lifetime associated with the kernel and its components.
+/// * `CPU` - The CPU variant, implementing the `CpuVariant` trait.
+/// * `K` - The maximum number of kernel objects (synchronization primitives).
+/// * `F` - The frequency of the system tick (SysTick) in Hz.
 pub struct Kernel<'a, CPU: CpuVariant, const K: usize, const F: u32> {
+    /// The list of tasks (threads) managed by the kernel.
     tasks: sl::List<'a, Thread<'a, CPU>, Runqueue>,
 
-    // systick
+    /// The system tick timer.
     systick: SysTick<F>,
 
-    // Ticks counter: period: P (ms)
+    /// The system tick counter.
     ticks: u64,
 
-    // Idle thread
+    /// The idle thread.
     idle: Thread<'a, CPU>,
 
-    // Kernel objects (Sync) for synchronization
+    /// The array of kernel objects (synchronization primitives).
     kobj: [Option<Box<dyn KernelObjectTrait<'a, CPU> + 'a>>; K],
 }
 
 impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
+    /// Initializes a new kernel instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `systick` - The system tick timer.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of the kernel.
     pub fn init(systick: SysTick<F>) -> Kernel<'a, CPU, K, F> {
         let idle = Idle::init();
 
@@ -89,23 +127,47 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         }
     }
 
+    /// Converts milliseconds to system ticks based on the system tick frequency.
+    ///
+    /// # Arguments
+    ///
+    /// * `ms` - The duration in milliseconds.
+    ///
+    /// # Returns
+    ///
+    /// The equivalent duration in system ticks.
     pub fn ms_to_ticks(ms: u32) -> u64 {
         ms as u64 * F as u64 / 1000
     }
 
+    /// Registers a new thread with the kernel and marks it as ready to run.
+    ///
+    /// # Arguments
+    ///
+    /// * `thread` - A reference to the thread to register.
     pub fn register_thread(&mut self, thread: &'a Thread<'a, CPU>) {
         self.tasks.push_front(thread);
         thread.state.set(super::thread::ThreadState::Running);
     }
 
+    /// Increments the system tick counter by one.
     fn increment_ticks(&mut self) {
         self.ticks += 1;
     }
 
+    /// Retrieves the current value of the system tick counter.
+    ///
+    /// # Returns
+    ///
+    /// The current system tick count.
     pub fn get_ticks(&self) -> u64 {
         self.ticks
     }
 
+    /// The main kernel loop that handles scheduling and dispatching threads.
+    ///
+    /// This function selects the next thread to run, switches context to it, and handles any
+    /// syscalls or interrupts that occur during its execution.
     pub fn kernel_loop(&mut self) {
         // Retrieve next thread to be executed
         let scheduler_verdict = self.sched_choose_next();
@@ -141,6 +203,14 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         };
     }
 
+    /// Chooses the next thread to run based on scheduling policy.
+    ///
+    /// This scheduler picks the ready thread with the highest priority. If no threads are ready,
+    /// it returns `SchedulerVerdict::Idle` to indicate the idle thread should run.
+    ///
+    /// # Returns
+    ///
+    /// A `SchedulerVerdict` indicating the next action for the scheduler.
     fn sched_choose_next(&mut self) -> SchedulerVerdict<'a, CPU> {
         // Pick any ready thread with maximum priority
         // This naive scheduler may always pick the same thread even if other
@@ -159,6 +229,18 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         }
     }
 
+    /// Switches context to the given thread (process) and returns the reason for returning to the kernel.
+    ///
+    /// This function saves the current process's state, switches context to the user process,
+    /// and upon return, determines whether the return was due to a syscall or an interrupt.
+    ///
+    /// # Arguments
+    ///
+    /// * `current` - A reference to the thread to switch to.
+    ///
+    /// # Returns
+    ///
+    /// A `SupervisorCallReason` indicating whether a syscall was invoked or an interrupt occurred.
     fn switch_to_process(current: &Thread<'_, CPU>) -> SupervisorCallReason {
         // Retrieve process last position of stack pointer
         let process_sp = current.stack_ptr.get();
@@ -181,7 +263,7 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
             // Another idea to achieve this goal could have been to read the user
             // process yielded instruction and compare it to "svc" to know if the
             // user thread triggered a syscall. Unfortunately, I'm not sure we
-            // can guarentee 100% it wasn't an interrupt which triggered the
+            // can guarantee 100% it wasn't an interrupt which triggered the
             // syscall at this exact moment ???
             let syscall_flag = read_volatile(&*addr_of_mut!(Z_SYSCALL_FLAG));
 
@@ -208,8 +290,8 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
                 // Read syscall main id from yielded PC
                 // "svc 0xbb" is encoded as the following 16bits instruction: 0xdfbb
                 let pc_svc = ptr::read(new_process_sp.add(6)) as *const u16;
-                // sub 1 because return address (RA) includes the "thumb" flag that
-                // need to be removed to get the actual instruction
+                // Subtract 1 because return address (RA) includes the "thumb" flag that
+                // needs to be removed to get the actual instruction
                 let svc_instruction = ptr::read(pc_svc.sub(1));
                 let syscall_id = (svc_instruction & 0xFF) as u8;
 
@@ -228,16 +310,19 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         }
     }
 
-    /// Create a new kernel object of type S with the given initialized primitive
-    /// and return the index of the created object
+    /// Creates a new kernel object with the given initialized synchronization primitive.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `S` - The type of the synchronization primitive.
     ///
     /// # Arguments
     ///
-    /// * `initialized_sync` - The initialized synchronization primitive
+    /// * `initialized_sync` - The initialized synchronization primitive to wrap in a kernel object.
     ///
     /// # Returns
     ///
-    /// * The index of the created object or None if slot allocation failed
+    /// An `Option<i32>` containing the index of the created kernel object, or `None` if allocation failed.
     fn kobj_create<S>(&mut self, initialized_sync: S) -> Option<i32>
     where
         S: SyncPrimitive<'a, CPU> + 'a,
@@ -259,6 +344,15 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
             })
     }
 
+    /// Creates a new kernel object with a default-initialized synchronization primitive.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `S` - The type of the synchronization primitive, which must implement `Default`.
+    ///
+    /// # Returns
+    ///
+    /// An `Option<i32>` containing the index of the created kernel object, or `None` if allocation failed.
     fn kobj_create_default<S>(&mut self) -> Option<i32>
     where
         S: SyncPrimitive<'a, CPU> + Default + 'a,
@@ -266,6 +360,17 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         self.kobj_create(S::default())
     }
 
+    /// Attempts to acquire a kernel object (synchronization primitive) for the given thread.
+    ///
+    /// # Arguments
+    ///
+    /// * `kobj` - The index of the kernel object to acquire.
+    /// * `thread` - A reference to the thread attempting to acquire the object.
+    /// * `timeout` - The timeout for the acquisition attempt.
+    ///
+    /// # Returns
+    ///
+    /// A `SyscallOutcome` indicating the result of the acquisition attempt.
     fn kobj_acquire(
         &mut self,
         kobj: i32,
@@ -297,6 +402,16 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         }
     }
 
+    /// Releases a kernel object and notifies any waiting threads.
+    ///
+    /// # Arguments
+    ///
+    /// * `kobj` - The index of the kernel object to release.
+    /// * `swap_data` - The data to swap with the kernel object (if applicable).
+    ///
+    /// # Returns
+    ///
+    /// A `SyscallOutcome` indicating the result of the release operation.
     fn kobj_release_notify(&mut self, kobj: i32, swap_data: SwapData) -> SyscallOutcome {
         let ret = if let Some(obj_ref) = self
             .kobj
@@ -315,15 +430,18 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         SyscallOutcome::Completed(ret as i32)
     }
 
-    /// Handle the syscall from the thread
+    /// Handles a syscall from the given thread.
     ///
-    /// Return Some(i32) value to return to the process, or None if the syscall
-    /// has not completed yet.
+    /// Executes the syscall and returns the outcome.
     ///
-    /// A null (0) value returned to the process means the syscall succeeded
+    /// # Arguments
     ///
-    /// Note that the thread must not be marked as "Running" if the returned value
-    /// is not Some()
+    /// * `thread` - The thread that invoked the syscall.
+    /// * `syscall` - The syscall to execute.
+    ///
+    /// # Returns
+    ///
+    /// A `SyscallOutcome` indicating the result of the syscall execution.
     unsafe fn do_syscall(
         &mut self,
         thread: &'a Thread<'a, CPU>,
@@ -387,16 +505,16 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
             }
             Syscall::Kernel(KernelSyscall::Fork) => {
                 // 1. Allocate stack + thread
-                // 2. Clone (clone) the thread
+                // 2. Clone the thread
                 // 3. Set stack pointer for forked thread
                 // 4. Set syscall return var for forked thread
-                // 5. register fork
-                // 6. return from syscall
+                // 5. Register forked thread
+                // 6. Return from syscall
 
                 SyscallOutcome::Completed(Kerr::NotSupported as i32)
             }
             Syscall::Io(IoSyscall::Print { ptr, len }) => {
-                // rebuild &[u8] from (string and len)
+                // Rebuild &[u8] from (string and len)
                 let slice = core::slice::from_raw_parts(ptr, len);
 
                 // Direct write
@@ -404,12 +522,20 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
 
                 SyscallOutcome::Completed(0)
             }
+            Syscall::Io(IoSyscall::Read1) => match stdio::read() {
+                Some(byte) => SyscallOutcome::Completed(byte as i32),
+                None => SyscallOutcome::Completed(Kerr::TryAgain as i32),
+            },
             _ => SyscallOutcome::Completed(Kerr::NoSuchSyscall as i32),
         }
     }
 
+    /// Handles any pending interrupts, such as the system tick interrupt.
+    ///
+    /// This function checks for interrupts that have occurred and updates the kernel's state
+    /// accordingly, such as incrementing the tick counter and managing timed-out threads.
     fn handle_interrupts(&mut self) {
-        // 1. Handle systick interrupt if it occured
+        // 1. Handle systick interrupt if it occurred
         if self.systick.get_countflag() {
             self.increment_ticks();
 
