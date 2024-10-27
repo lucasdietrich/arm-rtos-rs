@@ -129,17 +129,16 @@ pub struct Thread<'a, CPU: CpuVariant> {
     /// Thread priority (preemptive/cooperative)
     pub priority: ThreadPriority,
 
-    /// Stats for the current thread
-    #[cfg(feature = "kernel-stats")]
-    pub stats: ThreadStats,
-
     /// This link is used to organize threads in kernel list of known threads
     runqueue_next: sl::Link<'a, Thread<'a, CPU>, Runqueue>,
 
-    // TODO
     /// This link is used to make the thread waiting for a synchronization object
     /// by adding it to the queue of waiting thread for the object.
     waitqueue_next: sl::Link<'a, Thread<'a, CPU>, Waitqueue>,
+
+    /// Stats for the current thread
+    #[cfg(feature = "kernel-stats")]
+    pub stats: ThreadStats,
 }
 
 impl<'a, CPU: CpuVariant> sl::Node<'a, Thread<'a, CPU>, Runqueue> for Thread<'a, CPU> {
