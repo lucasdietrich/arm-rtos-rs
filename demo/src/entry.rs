@@ -8,7 +8,7 @@ use kernel::{
     kernel::kernel::Kernel,
     serial::{SerialConfig, SerialTrait},
     serial_utils::Hex,
-    soc::mps2_an385::{UartDevice, UART0},
+    soc::mps2_an38x::{UartDevice, UART0},
     stdio,
 };
 use kernel::{print, println};

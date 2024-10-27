@@ -4,8 +4,8 @@
 elf=$1
 
 qemu-system-arm \
-    -cpu cortex-m3 \
-    -machine mps2-an385 \
+    -cpu cortex-m4 \
+    -machine mps2-an386 \
     -nographic \
     -vga none \
     -semihosting-config enable=on,target=native \

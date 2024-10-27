@@ -504,6 +504,7 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
                 SyscallOutcome::Completed(0)
             }
             Syscall::Kernel(KernelSyscall::Fork) => {
+                // Needs MMU support
                 // 1. Allocate stack + thread
                 // 2. Clone the thread
                 // 3. Set stack pointer for forked thread

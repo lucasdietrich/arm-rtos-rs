@@ -1,7 +1,7 @@
 # Rust ARM RTOS playground
 
 This personal *learning* project is an attempt to build a simple/naive RTOS for ARM Cortex-M microcontrollers in Rust.
-Targeted microcontrollers are the `mps2_an385` (Cortex M3) platform and the `stm32f429zi` MCU (Cortex M4).
+Targeted microcontrollers are the `mps2_an385` (arm v6 Cortex M4), `mps2_an386` (arm v7 Cortex M4) platform and the `stm32f429zi` MCU (arm v7 Cortex M4).
 I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <https://github.com/lucasdietrich/AVRTOS>
 
 ## Ressources
@@ -16,6 +16,8 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
   - [**The Rust Reference: Inline assembly**](https://doc.rust-lang.org/reference/inline-assembly.html)
   - [Nightly: Inline assembly](https://doc.rust-lang.org/nightly/rust-by-example/unsafe/asm.html)
 - [The Embedded Rust Book: Concurrency](https://docs.rust-embedded.org/book/concurrency/)
+- [LLVM-embedded-toolchain-for-Arm/CMakeLists.txt](https://github.com/ARM-software/LLVM-embedded-toolchain-for-Arm/blob/main/CMakeLists.txt)
+
 
 ### Datasheets:
 
@@ -26,9 +28,15 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
 ## Desired features
 
 - [ ] Architecture: (`thumbv7em-none-eabihf`), devices:
-    - [x] mps2_an385 (ARM Cortex-M3 )
-    - [ ] stm32f4xx (ARM Cortex-M4)
-
+    - [ ] mps2_an385 (armv6 Cortex-M3 )
+        - compile flags: `-mfloat-abi=soft -march=armv6m -mfpu=none`
+        - target triplet: `thumbv6m-unknown-none-eabi`
+        - [AN385]: https://developer.arm.com/documentation/dai0385/latest/
+    - [x] mps2_an386 (armv7 Cortex-M4 )
+        - compile flags: `-mfloat-abi=softfp -march=armv7m -mfpu=fpv4-sp-d16`
+        - target triplet: `thumbv7m-unknown-none-eabi`
+        - [AN386]: https://developer.arm.com/documentation/dai0386/latest/
+    - [ ] stm32f4xx (armv7 Cortex-M4)
 - [x] Cortex M3/M4 initialization
     - [x] RAM initialization
     - [x] Vector table
@@ -40,9 +48,10 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [x] Systick
       - [x] Configure highest priority (0b000)
     - [ ] Other interrupts
-- [ ] Peripherals:
+- [ ] minimal drivers support
     - [ ] UART
       - [x] mps2_an385
+      - [x] mps2_an386
       - [ ] stm32f4xx
 - [ ] RTOS features:
     - [x] stacks
@@ -54,22 +63,21 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [x] cooperative scheduling
     - [x] preemptive scheduling
     - [x] sleep
-    - [ ] mutex
-    - [ ] semaphore
-    - [ ] minimal drivers support for UART and GPIO
+    - [x] mutex
+    - [x] semaphore
     - [x] syscalls:
         - [x] printf
         - [x] sleep
-        - [ ] fork
-        - [ ] mutex
-        - [ ] semaphore 
-        - [ ] memory allocation
+        - [ ] fork (needs MMU)
+        - [x] mutex
+        - [x] semaphore 
+        - [x] memory allocation
     - [ ] std library (allocator, collections, etc.)
         - [ ] rust
         - [ ] C
 - [ ] Minimal process: load an application from an elf file and run it
     - [ ] parse elf file
-    - [ ] toolchain for build the application (C/Rust + linker script + relocation? + syscalls)
+    - [ ] build toolchain with crosstool-ng for C development (linker script + relocation? + syscalls)]
 
 ## Questions/ideas/problems
 

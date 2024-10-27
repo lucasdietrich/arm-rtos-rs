@@ -18,7 +18,7 @@ disassemble:
 qemu: build disassemble
 	qemu-system-arm \
 		-cpu cortex-m3 \
-		-machine mps2-an385 \
+		-machine mps2-an386 \
 		-nographic \
 		-vga none \
 		-semihosting-config enable=on,target=native \

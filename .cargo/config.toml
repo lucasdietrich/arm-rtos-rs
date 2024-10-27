@@ -2,7 +2,7 @@
 [target.thumbv7em-none-eabihf]
 rustflags = [
     # order of linker arguments is important
-    "-C", "link-arg=-Tkernel/mps2_an385.x", 
+    "-C", "link-arg=-Tkernel/mps2_an38x.x", 
     "-C", "link-arg=-Tkernel/common.x", 
     "-C", "link-args=-Map=./target/demo.map"
 ]

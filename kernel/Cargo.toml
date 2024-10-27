@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["mps2-an385"]
+default = ["mps2-an386"]
 mps2-an385 = ["cm3"]
+mps2-an386 = ["cm4"]
 cm3 = []
+cm4 = []
 kernel-debug = []
 kernel-stats = []
 

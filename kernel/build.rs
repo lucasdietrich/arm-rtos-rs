@@ -1,4 +1,4 @@
-const CHIP_LINKER_SCRIPT: &str = "mps2_an385.x";
+const CHIP_LINKER_SCRIPT: &str = "mps2_an38x.x";
 const COMMON_LINKER_SCRIPT: &str = "common.x";
 
 fn main() {

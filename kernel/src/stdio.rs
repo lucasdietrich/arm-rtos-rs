@@ -1,6 +1,6 @@
 use core::fmt::{Arguments, Write};
 
-use crate::{cortex_m::cortex_m_rt::FCPU, serial::SerialTrait, soc::mps2_an385::UartDevice};
+use crate::{cortex_m::cortex_m_rt::FCPU, serial::SerialTrait, soc::mps2_an38x::UartDevice};
 
 static mut STDIO_UART: Option<UartDevice<FCPU>> = None;
 

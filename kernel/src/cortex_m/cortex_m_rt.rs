@@ -3,7 +3,7 @@ use core::{
     ptr::{self, addr_of, addr_of_mut},
 };
 
-// TODO move to mps2_an385
+// TODO move to mps2_an38x
 pub const FCPU: u32 = 25_000_000;
 
 #[panic_handler]

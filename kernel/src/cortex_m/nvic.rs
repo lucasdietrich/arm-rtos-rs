@@ -61,7 +61,7 @@ pub struct NVICRegs {
 pub struct NVIC;
 
 impl NVIC {
-    #[cfg(feature = "cm3")]
+    #[cfg(any(feature = "cm3", feature = "cm4"))]
     pub const PRIO_BITS: u8 = 3;
 
     pub const PTR: *const NVICRegs = 0xE000_E100 as *const NVICRegs;
