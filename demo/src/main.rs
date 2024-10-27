@@ -6,5 +6,6 @@
 #![feature(maybe_uninit_uninit_array)]
 
 pub mod entry;
+pub mod fork;
 pub mod shell;
 pub mod signal;

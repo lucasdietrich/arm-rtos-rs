@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["mps2-an385"]
+default = ["mps2-an385", "kernel-fork"]
 mps2-an385 = ["cm3"]
 cm3 = []
+mmu = []
+kernel-fork = ["mmu"]
 kernel-debug = []
 kernel-stats = []
 

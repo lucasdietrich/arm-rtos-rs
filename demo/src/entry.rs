@@ -13,11 +13,11 @@ use kernel::{
 };
 use kernel::{print, println};
 
-use crate::{shell, signal};
+use crate::{fork, shell, signal};
 
 pub const FREQ_SYS_TICK: u32 = 100; // Hz
 
-pub const USER_THREAD_SIZE: usize = 16384;
+pub const USER_THREAD_SIZE: usize = 8192;
 
 #[no_mangle]
 pub extern "C" fn _start() {
@@ -78,6 +78,13 @@ pub extern "C" fn _start() {
     let shell_thread = shell::init_shell_thread();
     #[cfg(feature = "shell")]
     kernel.register_thread(&shell_thread);
+
+    #[cfg(feature = "fork")]
+    let fork_threads = fork::init_threads();
+    #[cfg(feature = "fork")]
+    for thread in fork_threads.iter() {
+        kernel.register_thread_by_ref(&thread);
+    }
 
     loop {
         kernel.kernel_loop();

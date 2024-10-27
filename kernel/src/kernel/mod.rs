@@ -23,7 +23,7 @@ pub trait InitStackFrameTrait: Sized {
 pub trait CpuVariant {
     const FCPU: u32;
 
-    type CalleeContext: Default;
+    type CalleeContext: Default + Clone + Copy; // Clone and Copy is required to fork a thread
     type InitStackFrame: InitStackFrameTrait;
 
     unsafe fn switch_to_user(

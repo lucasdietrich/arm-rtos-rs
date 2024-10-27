@@ -3,15 +3,19 @@
 //! This module contains the core implementation of the kernel, including the scheduler, syscall handling,
 //! thread management, and synchronization primitives.
 
-use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
+use core::{
+    mem,
+    ptr::{self, addr_of_mut, read_volatile, write_volatile},
+};
 
-use alloc::{alloc::Global, boxed::Box};
+use alloc::{alloc::Global, boxed::Box, vec::Vec};
 
 use crate::{
     cortex_m::systick::SysTick,
     kernel::{
         errno::Kerr,
         idle::Idle,
+        stack::Stack,
         sync::{
             KernelObject, KernelObjectTrait, Mutex, Semaphore, Signal, SignalValue, SwapData, Sync,
             SyncPrimitive,
@@ -145,9 +149,15 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
     /// # Arguments
     ///
     /// * `thread` - A reference to the thread to register.
-    pub fn register_thread(&mut self, thread: &'a Thread<'a, CPU>) {
+    pub fn register_thread_by_ref(&mut self, thread: &'a Thread<'a, CPU>) {
         self.tasks.push_front(thread);
         thread.state.set(super::thread::ThreadState::Running);
+    }
+
+    pub fn register_thread(&mut self, thread: Thread<'a, CPU>) {
+        let boxed_thread = Box::new(thread);
+
+        self.register_thread_by_ref(Box::leak(boxed_thread));
     }
 
     /// Increments the system tick counter by one.
@@ -503,14 +513,32 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
                 thread.state.set(ThreadState::Stopped);
                 SyscallOutcome::Completed(0)
             }
+            #[cfg(feature = "kernel-fork")]
             Syscall::Kernel(KernelSyscall::Fork) => {
-                // 1. Allocate stack + thread
-                // 2. Clone the thread
+                // 1. Allocate stack
+                // 2. Duplicate the thread (copy state)
                 // 3. Set stack pointer for forked thread
                 // 4. Set syscall return var for forked thread
                 // 5. Register forked thread
                 // 6. Return from syscall
 
+                match Box::try_new(Stack::<8192>::uninit()) {
+                    Ok(stack) => {
+                        let stack = Box::leak(stack);
+                        let stack_info = stack.get_info();
+                        match Thread::fork(thread, stack_info) {
+                            Ok(fork) => {
+                                self.register_thread(fork);
+                                SyscallOutcome::Completed(0)
+                            }
+                            Err(kerr) => SyscallOutcome::Completed(kerr as i32),
+                        }
+                    }
+                    Err(_) => SyscallOutcome::Completed(Kerr::NoMemory as i32),
+                }
+            }
+            #[cfg(not(feature = "kernel-fork"))]
+            Syscall::Kernel(KernelSyscall::Fork) => {
                 SyscallOutcome::Completed(Kerr::NotSupported as i32)
             }
             Syscall::Io(IoSyscall::Print { ptr, len }) => {

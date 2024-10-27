@@ -112,6 +112,10 @@ pub struct Thread<'a, CPU: CpuVariant> {
     /// and it is restored when the thread resumes execution.
     pub(super) stack_ptr: Cell<*mut u32>,
 
+    /// Information about the stack used by the thread (size and end pointer).
+    #[cfg(feature = "kernel-fork")]
+    pub stack_infos: StackInfo,
+
     /// Snapshot of CPU register states when the thread last yielded the CPU.
     ///
     /// This context includes callee-saved registers that is preserved across
@@ -166,6 +170,8 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
     ) -> Self {
         let thread = Thread {
             stack_ptr: Cell::new(unsafe { stack.stack_end.sub(CPU::InitStackFrame::SIZE_WORDS) }),
+            #[cfg(feature = "kernel-fork")]
+            stack_infos: stack.clone(),
             context: Cell::new(CPU::CalleeContext::default()),
             priority: ThreadPriority::from(raw_priority),
             state: Cell::new(ThreadState::Stopped),
@@ -254,6 +260,41 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         unsafe {
             self.set_syscall_return_value_unchecked(Kerr::TimedOut as i32);
         }
+    }
+
+    #[cfg(feature = "kernel-fork")]
+    pub fn fork(origin: &Thread<'a, CPU>, fork_stack: StackInfo) -> Result<Self, Kerr> {
+        use crate::kernel::stack::{stack_copy, StackError};
+
+        // Copy origin thread stack to fork thread stack
+        stack_copy(&origin.stack_infos, &fork_stack).map_err(|e| match e {
+            StackError::NoMemory => Kerr::NoMemory,
+            StackError::Overlapping => Kerr::InvalidArguments,
+        })?;
+
+        // Calculate fork stack pointer
+        let fork_stack_ptr = unsafe {
+            let thread_stack_offset = origin
+                .stack_infos
+                .ptr_to_offset_unchecked(origin.stack_ptr.get());
+
+            fork_stack.offset_to_ptr_unchecked(thread_stack_offset)
+        };
+
+        // Create the fork thread
+        let fork = Thread {
+            stack_ptr: Cell::new(fork_stack_ptr),
+            stack_infos: fork_stack,
+            context: Cell::new(origin.context.get()),
+            state: Cell::new(ThreadState::Stopped),
+            priority: origin.priority,
+            runqueue_next: sl::Link::empty(),
+            waitqueue_next: sl::Link::empty(),
+            #[cfg(feature = "kernel-stats")]
+            stats: ThreadStats::default(),
+        };
+
+        Ok(fork)
     }
 }
 
