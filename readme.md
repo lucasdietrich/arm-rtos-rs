@@ -17,7 +17,12 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
   - [Nightly: Inline assembly](https://doc.rust-lang.org/nightly/rust-by-example/unsafe/asm.html)
 - [The Embedded Rust Book: Concurrency](https://docs.rust-embedded.org/book/concurrency/)
 - [LLVM-embedded-toolchain-for-Arm/CMakeLists.txt](https://github.com/ARM-software/LLVM-embedded-toolchain-for-Arm/blob/main/CMakeLists.txt)
-
+- [Position-Independent Code with GCC for ARM Cortex-M](https://mcuoneclipse.com/2021/06/05/position-independent-code-with-gcc-for-arm-cortex-m/)
+- [Support for position independent code](https://developer.arm.com/documentation/100748/0623/Mapping-Code-and-Data-to-the-Target/Support-for-position-independent-code)
+    - [Bare-metal Position Independent Executables](https://developer.arm.com/documentation/100748/0623/Mapping-Code-and-Data-to-the-Target/Bare-metal-Position-Independent-Executables?lang=en)
+    - [Procedure Call Standard for the Arm® Architecture](https://github.com/ARM-software/abi-aa/blob/main/aapcs32/aapcs32.rst)
+- [GCC ARM Options](https://gcc.gnu.org/onlinedocs/gcc-6.1.0/gcc/ARM-Options.html)
+- [OpenBSD Position Independent Executable (PIE)](https://www.openbsd.org/papers/nycbsdcon08-pie/)
 
 ### Datasheets:
 
@@ -88,6 +93,9 @@ TODO:
 - Add the noinit section to the linker script
 - If symbol gets wiped out of the elf, gdb won't find it, we need to force the symbol to be kept in the elf file -> how to ? (e.g. _thread_switch)
 - Proper Systick/FCPU and FREQ_SYS_TICK handling
+- Choose distinct allocators for multiple Box<T> (e.g. one for the kernel, one for the user)
+- Implement synchronization primitives cancellation mecanism (trait function + syscall)
+- Implement identifier for synchronization primitives (number, str ??)
 
 ## Notes
 

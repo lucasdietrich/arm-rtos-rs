@@ -1,5 +1,6 @@
 use core::ffi::c_void;
 
+pub mod elf_loader;
 pub mod errno;
 pub mod idle;
 pub mod kernel;

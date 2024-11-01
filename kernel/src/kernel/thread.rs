@@ -98,6 +98,12 @@ impl PartialOrd for ThreadPriority {
     }
 }
 
+impl Default for ThreadPriority {
+    fn default() -> Self {
+        ThreadPriority::Preemptive(0)
+    }
+}
+
 /// Represents a thread in a multitasking environment.
 ///
 /// ## Design Details
@@ -158,6 +164,10 @@ impl<'a, CPU: CpuVariant> Thread<'a, CPU> {
         !self.stack_ptr.get().is_null()
     }
 
+    ///
+    ///
+    /// Note: Function only update end of the stack, the beginning of the stack
+    /// remains unchanged.
     pub fn init(
         stack: &StackInfo,
         entry: ThreadEntry,

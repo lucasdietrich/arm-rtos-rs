@@ -15,6 +15,7 @@ pub struct SVCCallParams {
 #[repr(u8)]
 #[derive(FromPrimitive)]
 pub enum SyscallId {
+    Test = 0,
     Kernel = 1,
     Io = 2,
     Driver = 3,
@@ -51,6 +52,7 @@ pub enum IoSyscallId {
 
 #[derive(Debug)]
 pub enum Syscall {
+    Test { r0: u32, r1: u32, r2: u32, r3: u32 },
     Kernel(KernelSyscall),
     Io(IoSyscall),
     Driver,
@@ -59,6 +61,12 @@ pub enum Syscall {
 impl Syscall {
     pub fn from_svc_params(params: SVCCallParams) -> Option<Syscall> {
         SyscallId::from_u8(params.syscall_id).and_then(|syscall_id| match syscall_id {
+            SyscallId::Test => Some(Syscall::Test {
+                r0: params.r0,
+                r1: params.r1,
+                r2: params.r2,
+                r3: params.r3,
+            }),
             SyscallId::Kernel => KernelSyscallId::from_u32(params.r3).and_then(|kernel_syscall| {
                 match kernel_syscall {
                     KernelSyscallId::Yield => Some(KernelSyscall::Yield),

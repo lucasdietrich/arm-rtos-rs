@@ -4,17 +4,25 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["mps2-an386"]
+default = ["mps2-an386", "kernel-loadable-elf", "kernel-noinit-canaries", "loadable-elf-reg-r9"]
 mps2-an385 = ["cm3"]
 mps2-an386 = ["cm4"]
 cm3 = []
 cm4 = []
-kernel-debug = []
+kernel-debug = ["kernel-noinit-canaries"]
 kernel-stats = []
+kernel-loadable-elf = ["elf"]
+kernel-noinit-canaries = []
+loadable-elf-got = []
+loadable-elf-reg-r9 = ["kernel-loadable-elf"]
+loadable-elf-reg-r10 = ["kernel-loadable-elf"]
 
 [dependencies]
 num-traits = { version =  "0.2", default-features = false}
 num-derive = { version =  "0.4", default-features = false}
+# elf = { version = "0.7.4", optional = true, default-features = false}
+elf = { path = "/home/lucas/tmp/rust-elf", optional = true, default-features = false}
+
 
 volatile-register = "0.2.2"
 bitfield = "0.16.0"

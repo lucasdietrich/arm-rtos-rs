@@ -5,7 +5,6 @@ use kernel::{
     kernel::{stack::Stack, thread::Thread, timeout::Timeout, userspace, CpuVariant},
     println,
     serial_utils::Hex,
-    stdio,
 };
 
 pub fn init_shell_thread<'a, CPU: CpuVariant>() -> Thread<'a, CPU> {

@@ -62,3 +62,27 @@ pub struct StackInfo {
     pub size: usize,
     pub stack_end: *mut u32,
 }
+
+impl StackInfo {
+    /// Write a value at a specific offset from the bottom of the stack.
+    ///
+    /// # Arguments
+    /// * `offset` - The offset from the bottom of the stack to write the value.
+    /// * `obj` - The value to write.
+    ///
+    /// # Returns
+    /// The pointer to the written value if the write was successful, otherwise `None`.
+    pub unsafe fn write_obj_at<T: Sized>(&self, offset: usize, obj: T) -> Option<*mut T> {
+        let obj_size = size_of::<T>();
+
+        if offset + obj_size <= self.size {
+            let stack_end = self.stack_end as *mut u8;
+            let ptr = stack_end.sub(self.size - offset) as *mut T;
+            ptr.write(obj);
+
+            Some(ptr)
+        } else {
+            None
+        }
+    }
+}

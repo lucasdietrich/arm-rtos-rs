@@ -17,7 +17,7 @@ disassemble:
 
 qemu: build disassemble
 	qemu-system-arm \
-		-cpu cortex-m3 \
+		-cpu cortex-m4 \
 		-machine mps2-an386 \
 		-nographic \
 		-vga none \

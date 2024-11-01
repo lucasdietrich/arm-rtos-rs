@@ -1,7 +1,7 @@
 use num_derive::FromPrimitive;
 
 #[repr(i32)]
-#[derive(FromPrimitive)]
+#[derive(Debug, FromPrimitive)]
 pub enum Kerr {
     Success = 0,            /* No error */
     EPERM = -1,             /* Operation not permitted */

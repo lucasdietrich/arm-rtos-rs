@@ -13,9 +13,10 @@ use kernel::{
 };
 use kernel::{print, println};
 
-use crate::{shell, signal};
+use crate::{loadable, shell, signal};
 
 pub const FREQ_SYS_TICK: u32 = 100; // Hz
+pub const KOBJS: usize = 32;
 
 pub const USER_THREAD_SIZE: usize = 16384;
 
@@ -65,7 +66,7 @@ pub extern "C" fn _start() {
 
     // init kernel
     let systick = SysTick::<FREQ_SYS_TICK>::configure_period::<FCPU>(true);
-    let mut kernel = Kernel::<CortexM, 32, FREQ_SYS_TICK>::init(systick);
+    let mut kernel = Kernel::<CortexM, KOBJS, FREQ_SYS_TICK>::init(systick);
 
     #[cfg(feature = "signal")]
     let signal_threads = signal::init_threads();
@@ -78,6 +79,10 @@ pub extern "C" fn _start() {
     let shell_thread = shell::init_shell_thread();
     #[cfg(feature = "shell")]
     kernel.register_thread(&shell_thread);
+
+    #[cfg(feature = "loadable")]
+    let thread = loadable::init(&mut kernel);
+    kernel.register_thread(&thread);
 
     loop {
         kernel.kernel_loop();

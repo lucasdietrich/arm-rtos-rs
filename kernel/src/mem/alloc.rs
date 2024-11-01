@@ -8,7 +8,7 @@ use core::{
 };
 
 const MAX_SUPPORTED_ALIGN: usize = 8;
-const KERNEL_ALLOCATOR_SIZE: usize = 4096;
+const KERNEL_ALLOCATOR_SIZE: usize = 65536;
 
 // Align must match MAX_SUPPORTED_ALIGN
 #[repr(C, align(8))]

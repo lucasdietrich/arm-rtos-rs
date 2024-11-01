@@ -50,6 +50,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "elf"
+version = "0.8.0-dev"
+
+[[package]]
 name = "embedded-hal"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -64,6 +68,7 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "bitfield 0.16.1",
+ "elf",
  "num-derive",
  "num-traits",
  "volatile-register",

@@ -25,7 +25,7 @@ use crate::{
         CpuVariant,
     },
     list::singly_linked as sl,
-    stdio,
+    println, stdio,
 };
 
 #[cfg(feature = "kernel-debug")]
@@ -454,6 +454,14 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         thread.stats.syscalls.set(thread.stats.syscalls.get() + 1);
 
         match syscall {
+            Syscall::Test { r0, r1, r2, r3 } => {
+                // #[cfg(feature = "kernel-debug")]
+                println!(
+                    "Test syscall: r0={:x}, r1={:x}, r2={:x}, r3={:x}",
+                    r0, r1, r2, r3
+                );
+                SyscallOutcome::Completed(0)
+            }
             Syscall::Kernel(KernelSyscall::Yield) => SyscallOutcome::Completed(0),
             Syscall::Kernel(KernelSyscall::Sleep { ms }) => {
                 let timeout = Timeout::from(ms);
