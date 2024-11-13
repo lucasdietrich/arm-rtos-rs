@@ -106,7 +106,7 @@ impl CpuVariant for CortexM {
             msr psp, r0
     
             // 3. Restore user process context
-            ldmia r1, {{r4, r11}}
+            ldmia r1, {{r4-r11}}
     
             // 4. trigger a pendSV: set PENDSVSET bit (28) in ICSR register (0xE000ED04)
             ldr r0, =0xE000ED04   // Load ICSR address
@@ -120,7 +120,7 @@ impl CpuVariant for CortexM {
             // =============================================================
     
             // 5. Save user process context
-            stmia r1, {{r4, r11}}
+            stmia r1, {{r4-r11}}
     
             // 6. Save user process stack pointer back to r0
             mrs r0, psp
