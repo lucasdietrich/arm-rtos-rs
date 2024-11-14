@@ -59,7 +59,7 @@ impl From<u32> for Timeout {
         if value == u32::MAX {
             Timeout::Forever
         } else {
-            Timeout::Duration(value as u32)
+            Timeout::Duration(value)
         }
     }
 }

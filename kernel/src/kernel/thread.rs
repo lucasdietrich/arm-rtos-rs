@@ -6,7 +6,7 @@ use super::{
     CpuVariant, InitStackFrameTrait, ThreadEntry,
 };
 use crate::list::{self, singly_linked as sl};
-use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr, time};
+use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -145,6 +145,7 @@ pub struct Thread<'a, CPU: CpuVariant> {
     /// Stats for the current thread
     #[cfg(feature = "kernel-stats")]
     pub stats: ThreadStats,
+    // TODO: Add thread name and id
 }
 
 impl<'a, CPU: CpuVariant> sl::Node<'a, Thread<'a, CPU>, Runqueue> for Thread<'a, CPU> {

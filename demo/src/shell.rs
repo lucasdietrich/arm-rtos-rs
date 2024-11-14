@@ -5,6 +5,7 @@ use kernel::{
     kernel::{stack::Stack, thread::Thread, timeout::Timeout, userspace, CpuVariant},
     println,
     serial_utils::Hex,
+    user_println,
 };
 
 pub fn init_shell_thread<'a, CPU: CpuVariant>() -> Thread<'a, CPU> {
@@ -34,8 +35,7 @@ extern "C" fn mytask_shell(_arg: *mut c_void) -> ! {
                 }
                 b'w' => {
                     println!("SVC print");
-                    let msg = "Hello using SVC !!\n";
-                    syscall_ret = userspace::k_print(msg);
+                    user_println!("Hello using SVC !!");
                 }
                 _ => {}
             }

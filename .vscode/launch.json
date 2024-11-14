@@ -14,8 +14,9 @@
             "svdFile": "res/svd/ARMCM3.svd",
             // "svdFile": "res/svd/CMSDK_CM3.svd",
             "postLaunchCommands": [
-                // "b mytask_entry",
                 // "b z_pendsv",
+                // "b z_svc",
+                // "b mytask_entry",
                 // "b switch_to_user",
                 // "b z_svc",
                 // "b z_systick"

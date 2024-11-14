@@ -1,7 +1,7 @@
 use kernel::{
     self,
     kernel::{kernel::Kernel, CpuVariant},
-    print,
+    println, user_print,
 };
 
 use core::ffi::c_void;
@@ -20,7 +20,7 @@ pub fn init_misc<'a, CPU: CpuVariant>() -> Thread<'a, CPU> {
 
 extern "C" fn mytask_misc(_arg: *mut c_void) -> ! {
     loop {
-        print!(".");
+        user_print!(".");
         userspace::k_sleep(Timeout::from_seconds(1));
     }
 }
@@ -30,7 +30,17 @@ pub fn init<'a, CPU: CpuVariant, const K: usize, const F: u32>(
 ) -> Thread<'a, CPU> {
     let thread = init_misc();
 
-    ker.loadable_init();
+    let elf_bytes = include_bytes!("../../samples/hello_world.elf");
+
+    match ker.load_elf(elf_bytes) {
+        Ok(_) => println!("elf 1 loaded"),
+        Err(e) => println!("Error loading elf: {:?}", e),
+    }
+
+    match ker.load_elf(elf_bytes) {
+        Ok(_) => println!("elf 2 loaded"),
+        Err(e) => println!("Error loading elf: {:?}", e),
+    }
 
     thread
 }

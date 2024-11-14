@@ -5,7 +5,6 @@ use elf::{abi, endian::LittleEndian};
 use crate::{
     kernel::{
         elf_loader::entry::{Lex, PICReg},
-        errno::Kerr,
         kernel::Kernel,
         stack::Stack,
         thread::Thread,
@@ -21,29 +20,34 @@ const NOINIT_CANARIES_VALUE: u8 = 0xAA;
 /// Enumeration of errors that may occur during the ELF loading process.
 #[derive(Debug)]
 pub enum LoadError {
+    /// No memory available.
+    NoMemory,
     /// Error when data sections are non-contiguous.
     NonContiguousDataSections,
     /// Error when an unsupported write-allocate section is encountered.
     UnsupportedWASection,
-    /// Error when the required `.text` section is missing.
-    MissingTextSection,
     /// Error related to text alignment.
     TextAlign,
-    /// General error parsing the ELF file.
-    ParseElf,
-    /// Error when parsing the `.text` section.
-    ParseText,
-    /// Error parsing the ELF headers.
-    ParseHeaders,
-    /// Error parsing section data.
-    ParseSectionData,
-    /// Error parsing section names.
-    ParseSectionName,
     /// Error when a section alignment is unsupported.
     UnsupportedSectionAlign,
+    /// Error when the required `.text` section is missing.
+    MissingTextSection,
+    /// Missing .got section
+    MissingGotSection,
+    /// Missing .data section
+    MissingDataSection,
+    /// Missing .bss section
+    MissingBssSection,
+    /// Missing .noinit section
+    MissingNoinitSection,
+    /// Error parsing the ELF headers.
+    ParseHeaders,
+    /// Parse Error
+    ParseElf(elf::ParseError),
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(clippy::upper_case_acronyms)]
 enum SectionType {
     GOT,
     DATA,
@@ -65,9 +69,9 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
         // Find the .text section
         let text = elf
             .section_header_by_name(".text")
-            .map_err(|_| LoadError::ParseElf)?
+            .map_err(LoadError::ParseElf)?
             .ok_or(LoadError::MissingTextSection)?;
-        let text_data = elf.section_data(&text).map_err(|_| LoadError::ParseText)?.0;
+        let text_data = elf.section_data(&text).map_err(LoadError::ParseElf)?.0;
 
         // Ensure the .text section is aligned
         let alignment = text.sh_addralign as usize;
@@ -103,7 +107,7 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
 
             let name = strtab
                 .get(h.sh_name as usize)
-                .map_err(|_| LoadError::ParseSectionName)?;
+                .map_err(LoadError::ParseElf)?;
 
             let section = match name {
                 ".got" => SectionType::GOT, // TODO: Ensure .got is first section
@@ -115,10 +119,7 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
 
             // For .bss and .noinit, the data is expected to be empty (i.e. &[])
             // Hence, the length must be retrieved from the section header (i.e. sh_size)
-            let section_data = elf
-                .section_data(&h)
-                .map_err(|_| LoadError::ParseSectionData)?
-                .0;
+            let section_data = elf.section_data(&h).map_err(LoadError::ParseElf)?.0;
 
             if first_section {
                 addr_base = h.sh_addr;
@@ -175,9 +176,14 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
         &self,
         arg0: *mut c_void,
         priority: i8,
-    ) -> Result<Thread<'a, CPU>, Kerr> {
+    ) -> Result<Thread<'a, CPU>, LoadError>
+    where
+        // For the moment, the thread executed code is not copied from the ELF file,
+        // so the ELF file must remain valid for the lifetime of the thread.
+        'a: 'elf,
+    {
         // Allocate the stack for the thread
-        let stack = Box::try_new(Stack::<8192>::uninit()).map_err(|_| Kerr::NoMemory)?;
+        let stack = Box::try_new(Stack::<8192>::uninit()).map_err(|_| LoadError::NoMemory)?;
         let stack = Box::leak(stack);
         let stack_info = stack.get_info();
 
@@ -187,7 +193,10 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
         let data_base_ptr = data.as_mut_ptr() as *mut u8;
 
         // Initialize .got: copy from elf and patch each address in the .got section
-        let got_section = self.get_section(SectionType::GOT).as_ref().unwrap();
+        let got_section = self
+            .get_section(SectionType::GOT)
+            .as_ref()
+            .ok_or(LoadError::MissingGotSection)?;
         unsafe {
             got_section.patch_copy_to(data_base_ptr, |addr| {
                 addr + data_base_ptr as u32 - self.elf_addr_base as u32
@@ -195,13 +204,19 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
         }
 
         // Initialize .data
-        let data_section = self.get_section(SectionType::DATA).as_ref().unwrap();
+        let data_section = self
+            .get_section(SectionType::DATA)
+            .as_ref()
+            .ok_or(LoadError::MissingDataSection)?;
         unsafe {
             data_section.copy_to(data_base_ptr);
         }
 
         // Initialize .bss
-        let bss_section = self.get_section(SectionType::BSS).as_ref().unwrap();
+        let bss_section = self
+            .get_section(SectionType::BSS)
+            .as_ref()
+            .ok_or(LoadError::MissingBssSection)?;
         unsafe {
             bss_section.write_to(data_base_ptr, 0);
         }
@@ -211,7 +226,7 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
         unsafe {
             self.get_section(SectionType::NOINIT)
                 .as_ref()
-                .unwrap()
+                .ok_or(LoadError::MissingNoinitSection)?
                 .write_to(data_base_ptr, NOINIT_CANARIES_VALUE);
         }
 
@@ -224,7 +239,7 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
 
         // Write the entry context at the start of the allocated stack to
         // not allocate an additionnal buffer
-        let ptr = unsafe { stack_info.write_obj_at(0, lex) }.ok_or(Kerr::NoMemory)?;
+        let ptr = unsafe { stack_info.write_obj_at(0, lex) }.ok_or(LoadError::NoMemory)?;
 
         // Create thread for loaded program
         let thread = Thread::init(
@@ -239,25 +254,26 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
 }
 
 impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
-    pub fn loadable_init(&mut self) {
-        let bytes = include_bytes!("../../../../samples/hello_world.elf");
-        println!("Found ELF file, size: {}", bytes.len());
+    /// Load an ELF file of a PIE into memory and create a thread for it.
+    ///
+    /// # Parameters
+    /// - `bytes`: The ELF file bytes.
+    ///
+    /// # Returns
+    /// - A reference to the created thread.
+    /// - An error if the ELF file could not be loaded.
+    pub fn load_elf(&mut self, bytes: &[u8]) -> Result<&'a Thread<'a, CPU>, LoadError> {
+        let elf =
+            elf::ElfBytes::<LittleEndian>::minimal_parse(bytes).map_err(LoadError::ParseElf)?;
 
-        let ret = elf::ElfBytes::<LittleEndian>::minimal_parse(bytes.as_slice());
-        let elf = ret.unwrap();
-        println!("head: {:x?}", elf.ehdr);
+        let loadable = Loadable::<PICReg>::from(elf)?;
 
-        let loadable = Loadable::<PICReg>::from(elf).unwrap();
-        println!("loadable: {:?}", loadable);
-
-        let thread = loadable
-            .create_thread::<CPU>(core::ptr::null_mut(), 0)
-            .unwrap();
+        let thread = loadable.create_thread::<CPU>(core::ptr::null_mut(), 0)?;
         let thread = Box::new(thread);
         let thread = Box::leak(thread);
 
         self.register_thread(thread);
 
-        println!("Done");
+        Ok(thread)
     }
 }

@@ -1,4 +1,7 @@
-use core::arch::asm;
+use core::{
+    arch::asm,
+    fmt::{Arguments, Write},
+};
 
 use super::{
     syscalls::{IoSyscallId, KernelSyscallId, SyncPrimitiveType, SyscallId},
@@ -34,13 +37,13 @@ pub fn k_sleep(duration: Timeout) -> i32 {
     unsafe { z_call_svc_kernel_4(r0 as u32, 0, 0, KernelSyscallId::Sleep as u32) }
 }
 
-pub fn k_print(string: &str) -> i32 {
+pub fn k_print(string: &str, nl: bool) -> i32 {
     unsafe {
         z_call_svc_4::<{ SyscallId::Io as u8 }>(
             string.as_ptr() as u32,
             string.len() as u32,
-            0,
-            IoSyscallId::Print as u32,
+            nl as u32,
+            IoSyscallId::Write as u32,
         )
     }
 }
@@ -177,24 +180,37 @@ pub fn k_stdio_read1() -> Option<u8> {
     }
 }
 
-// pub fn z_user_print(args: Arguments<'_>, nl: bool) {
+pub fn z_user_print(args: Arguments<'_>, nl: bool) {
+    struct UserIo(bool); // Boolean parameter to print a newline
 
-// }
+    impl Write for UserIo {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let ret = k_print(s, self.0);
+            if ret < 0 {
+                Err(core::fmt::Error)
+            } else {
+                Ok(())
+            }
+        }
+    }
 
-// #[macro_export]
-// macro_rules! z_user_print {
-//     () => {};
-//     ($($arg:tt)*) => {{
-//         $crate::io::_print(format_args!($($arg)*), false)
-//     }};
-// }
+    let _ = UserIo(nl).write_fmt(args);
+}
 
-// #[macro_export]
-// macro_rules! user_println {
-//     () => {
-//         $crate::io::_print(format_args!("\n"), false)
-//     };
-//     ($($arg:tt)*) => {{
-//         $crate::io::_print(format_args!($($arg)*), true)
-//     }}
-// }
+#[macro_export]
+macro_rules! user_print {
+    () => {};
+    ($($arg:tt)*) => {{
+        $crate::kernel::userspace::z_user_print(format_args!($($arg)*), false)
+    }};
+}
+
+#[macro_export]
+macro_rules! user_println {
+    () => {
+        $crate::kernel::userspace::z_user_print(format_args!("\n"), false)
+    };
+    ($($arg:tt)*) => {{
+        $crate::kernel::userspace::z_user_print(format_args!($($arg)*), true)
+    }}
+}

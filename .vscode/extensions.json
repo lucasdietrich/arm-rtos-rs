@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "trond-snekvik.gnu-mapfiles",
-        "zixuanwang.linkerscript"
+        "zixuanwang.linkerscript",
+        "tamasfe.even-better-toml"
     ]
 }

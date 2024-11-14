@@ -80,9 +80,49 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
     - [ ] std library (allocator, collections, etc.)
         - [ ] rust
         - [ ] C
-- [ ] Minimal process: load an application from an elf file and run it
-    - [ ] parse elf file
-    - [ ] build toolchain with crosstool-ng for C development (linker script + relocation? + syscalls)]
+- [x] Minimal process: load an application from an elf file and run it
+    - [x] parse elf file
+    - [x] build toolchain with crosstool-ng for C development
+        - [ ] custom linker script ?
+    - [ ] write a minimal libc for the os (syscalls)
+
+## Expected output (loadable elf)
+
+```
+===========================
+arm rust RTOS demo starting
+===========================
+CPUID base: 0x410fc240
+interrupts enabled: true
+Systick prio: 0x00
+PendSV prio: 0x00
+SVC prio: 0x00
+Systick prio: 0x00
+PendSV prio: 0x07
+SVC prio: 0x07
+control: 0x00000000  priviledged, MSP, no FPU
+elf 1 loaded
+elf 2 loaded
+Kernel initialized, starting kernel loop and user threads ...
+===========================
+Test syscall: r0=10005f4a, r1=0, r2=0, r3=0
+Test syscall: r0=10005f44, r1=0, r2=0, r3=0
+.42 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+42 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+Bello World!
+Bello World!
+Test syscall: r0=1, r1=2, r2=3, r3=4
+Test syscall: r0=1, r1=2, r2=3, r3=4
+Test syscall: r0=0, r1=2000dfc0, r2=20, r3=87654321
+Test syscall: r0=0, r1=2000bf08, r2=20, r3=87654321
+Test syscall: r0=0, r1=0, r2=0, r3=0
+Loadable ELF returned: 2a
+Test syscall: r0=0, r1=0, r2=0, r3=0
+Loadable ELF returned: 2a
+......................................................
+```
 
 ## Questions/ideas/problems
 

@@ -15,7 +15,7 @@ pub struct SectionRef<'a> {
     /// Source data to copy from, it comes from the ELF file.
     /// - It is expected to be empty for `.bss` and `.noinit` sections.
     /// - It is expected to be non-empty for `.got` and `.data` sections with
-    ///  a size equal to the section size.
+    ///   a size equal to the section size.
     pub copy_from: &'a [u8],
 }
 

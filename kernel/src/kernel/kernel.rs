@@ -3,9 +3,12 @@
 //! This module contains the core implementation of the kernel, including the scheduler, syscall handling,
 //! thread management, and synchronization primitives.
 
-use core::ptr::{self, addr_of_mut, read_volatile, write_volatile};
+use core::{
+    alloc::{self, Allocator},
+    ptr::{self, addr_of_mut, read_volatile, write_volatile, NonNull},
+};
 
-use alloc::{alloc::Global, boxed::Box};
+use ::alloc::{alloc::Global, boxed::Box};
 
 use crate::{
     cortex_m::systick::SysTick,
@@ -33,6 +36,9 @@ use crate::println;
 
 use super::sync::AcquireOutcome;
 
+pub const USER_MALLOC_DEFAULT_ALIGN: usize = 4;
+pub const USER_MALLOC_MIN_ALIGN: usize = 2;
+
 /// Represents the reason why the supervisor (kernel) was called.
 ///
 /// This enum is used to distinguish between different reasons for entering the kernel from user mode,
@@ -58,6 +64,8 @@ pub enum SyscallOutcome {
     Completed(i32),
     /// Syscall made the thread pending and is waiting for a signal to complete.
     Pending,
+    /// 2 bytes align raw pointer
+    RawPtr(*const u8),
 }
 
 impl From<Option<i32>> for SyscallOutcome {
@@ -177,6 +185,9 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
             // when returning from user process, we need to handle various events
             SchedulerVerdict::RunProcess(process) => match Self::switch_to_process(process) {
                 SupervisorCallReason::Syscall(syscall_params) => unsafe {
+                    #[cfg(feature = "kernel-debug")]
+                    println!("process: {:#x?}", process.context.get());
+
                     let ret = if let Some(syscall) = Syscall::from_svc_params(syscall_params) {
                         self.do_syscall(process, syscall)
                     } else {
@@ -447,7 +458,7 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         thread: &'a Thread<'a, CPU>,
         syscall: Syscall,
     ) -> SyscallOutcome {
-        #[cfg(feature = "kernel-debug")]
+        #[cfg(feature = "kernel-debug-syscalls")]
         println!("{:?}", syscall);
 
         #[cfg(feature = "kernel-stats")]
@@ -511,6 +522,40 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
                 thread.state.set(ThreadState::Stopped);
                 SyscallOutcome::Completed(0)
             }
+            Syscall::Kernel(KernelSyscall::MemoryAlloc { size, mut align }) => {
+                // If align is 0, use default alignment
+                if align == 0 {
+                    align = USER_MALLOC_DEFAULT_ALIGN;
+                } else if align >= USER_MALLOC_MIN_ALIGN {
+                    return SyscallOutcome::Completed(Kerr::InvalidArguments as i32);
+                }
+
+                // For alignments greater than or equal to 2, the returned memory pointer
+                // can safely be shifted right by one bit (ptr >> 1), as the least significant
+                // bit of the aligned pointer will always be zero.
+                match alloc::Layout::from_size_align(size, align) {
+                    Ok(memory_layout) => match Global.allocate_zeroed(memory_layout) {
+                        Ok(ptr) => {
+                            let ptr = ptr.as_ptr() as *const u8 as u32;
+                            let shifted_ptr = ptr >> 1;
+                            SyscallOutcome::Completed(shifted_ptr as i32)
+                        }
+                        Err(_) => SyscallOutcome::Completed(Kerr::NoMemory as i32),
+                    },
+                    Err(_) => SyscallOutcome::Completed(Kerr::InvalidArguments as i32),
+                }
+            }
+            Syscall::Kernel(KernelSyscall::MemoryFree { ptr }) => {
+                if let Some(_ptr) = NonNull::new(ptr) {
+                    // TODO
+                    // Global.deallocate(ptr, layout) requires the original layout
+                    // how to rebuild layout from ptr ?
+
+                    SyscallOutcome::Completed(Kerr::NotSupported as i32)
+                } else {
+                    SyscallOutcome::Completed(Kerr::InvalidArguments as i32)
+                }
+            }
             Syscall::Kernel(KernelSyscall::Fork) => {
                 // Needs MMU support
                 // 1. Allocate stack + thread
@@ -522,12 +567,24 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
 
                 SyscallOutcome::Completed(Kerr::NotSupported as i32)
             }
-            Syscall::Io(IoSyscall::Print { ptr, len }) => {
+            Syscall::Io(IoSyscall::Print { ptr, len, newline }) => {
                 // Rebuild &[u8] from (string and len)
                 let slice = core::slice::from_raw_parts(ptr, len);
 
                 // Direct write
                 stdio::write_bytes(slice);
+
+                if newline {
+                    stdio::write_bytes(b"\n");
+                }
+
+                SyscallOutcome::Completed(0)
+            }
+            Syscall::Io(IoSyscall::HexPrint { ptr, len }) => {
+                // Rebuild &[u8] from (string and len)
+                let slice = core::slice::from_raw_parts(ptr, len);
+
+                stdio::write_hex(slice);
 
                 SyscallOutcome::Completed(0)
             }

@@ -47,17 +47,17 @@ impl InitStackFrameTrait for __basic_sf {
 // This might be moved to thread structure to avoid SP aligned issues
 #[repr(C)]
 #[allow(non_camel_case_types)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct __callee_context {
     pub v1: u32, // r4
-    pub v2: u32,
-    pub v3: u32,
-    pub v4: u32,
-    pub v5: u32,
-    pub v6: u32,
-    pub v7: u32,
-    pub v8: u32,
-    pub ip: u32,
+    pub v2: u32, // r5
+    pub v3: u32, // r6
+    pub v4: u32, // r7
+    pub v5: u32, // r8
+    pub v6: u32, // r9
+    pub v7: u32, // r10
+    pub v8: u32, // r11
+    pub ip: u32, // r12
 }
 
 impl __callee_context {

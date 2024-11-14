@@ -67,8 +67,11 @@ impl PICRegImpl for R10 {
     }
 }
 
-#[cfg(all(feature = "loadable-elf-reg-r9", feature = "loadable-elf-reg-r10"))]
-compile_error!("Only one PIC register can be used at a time");
+#[cfg(any(
+    not(any(feature = "loadable-elf-reg-r9", feature = "loadable-elf-reg-r10")),
+    all(feature = "loadable-elf-reg-r9", feature = "loadable-elf-reg-r10")
+))]
+compile_error!("One and only one PIC register must be selected");
 
 /// Type alias that selects the appropriate `PICRegImpl` based on the
 /// active feature flag, using either `R9` or `R10`.

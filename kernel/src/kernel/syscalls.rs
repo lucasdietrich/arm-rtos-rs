@@ -34,10 +34,16 @@ pub enum KernelSyscallId {
     Sync = 4,
     // Make thread pend on a kernel object
     Pend = 5,
-    // Clone the current thread into a new thread
-    Fork = 6,
-    // Stok the current thread
+    // Cancel a pending operation on a kernel object
+    Cancel = 6,
+    // Stop the current thread
     Stop = 7,
+    // Allocate memory for a new thread
+    MemoryAlloc = 8,
+    // Free memory for a thread
+    MemoryFree = 9,
+    // Clone the current thread into a new thread
+    Fork = 10,
     // // Uptime
     // Uptime = 100,
 }
@@ -45,9 +51,10 @@ pub enum KernelSyscallId {
 #[repr(u32)]
 #[derive(FromPrimitive)]
 pub enum IoSyscallId {
-    Print = 0,
-    Read1 = 1,
-    Read = 2,
+    Write = 0,
+    Read = 1,
+    HexPrint = 10,
+    Read1 = 11,
 }
 
 #[derive(Debug)]
@@ -106,17 +113,42 @@ impl Syscall {
                             }
                         })
                     }
-                    KernelSyscallId::Fork => Some(KernelSyscall::Fork),
+                    KernelSyscallId::Cancel => {
+                        SyncPrimitiveType::from_u32(params.r2).map(|sync_prim_type| {
+                            KernelSyscall::Cancel {
+                                kobj: params.r1 as i32,
+                                prim: sync_prim_type,
+                            }
+                        })
+                    }
                     KernelSyscallId::Stop => Some(KernelSyscall::Stop),
+                    KernelSyscallId::MemoryAlloc => Some(KernelSyscall::MemoryAlloc {
+                        size: params.r0 as usize,
+                        align: params.r1 as usize,
+                    }),
+                    KernelSyscallId::MemoryFree => Some(KernelSyscall::MemoryFree {
+                        ptr: params.r0 as *mut u8,
+                    }),
+                    KernelSyscallId::Fork => Some(KernelSyscall::Fork),
                 }
                 .map(Syscall::Kernel)
             }),
             SyscallId::Io => IoSyscallId::from_u32(params.r3).map(|io_syscall| {
                 Syscall::Io(match io_syscall {
-                    IoSyscallId::Print => {
+                    IoSyscallId::Write => {
                         let ptr = params.r0 as *const u8;
                         let size = params.r1 as usize;
-                        IoSyscall::Print { ptr, len: size }
+                        let newline = params.r2 != 0;
+                        IoSyscall::Print {
+                            ptr,
+                            len: size,
+                            newline,
+                        }
+                    }
+                    IoSyscallId::HexPrint => {
+                        let ptr = params.r0 as *const u8;
+                        let size = params.r1 as usize;
+                        IoSyscall::HexPrint { ptr, len: size }
                     }
                     IoSyscallId::Read => {
                         let ptr = params.r0 as *mut u8;
@@ -172,6 +204,17 @@ pub enum KernelSyscall {
         kobj: i32,
         timeout: Timeout,
     },
+    Cancel {
+        prim: SyncPrimitiveType,
+        kobj: i32,
+    },
+    MemoryAlloc {
+        size: usize,
+        align: usize,
+    },
+    MemoryFree {
+        ptr: *mut u8,
+    },
     Fork,
     Stop,
 }
@@ -181,11 +224,16 @@ pub enum IoSyscall {
     Print {
         ptr: *const u8,
         len: usize,
+        newline: bool,
     },
-    Read1,
     Read {
         ptr: *mut u8,
         len: usize,
         timeout: Timeout,
     },
+    HexPrint {
+        ptr: *const u8,
+        len: usize,
+    },
+    Read1,
 }

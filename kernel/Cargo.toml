@@ -5,23 +5,31 @@ edition = "2021"
 
 [features]
 default = ["mps2-an386", "kernel-loadable-elf", "kernel-noinit-canaries", "loadable-elf-reg-r9"]
+
+# soc
 mps2-an385 = ["cm3"]
 mps2-an386 = ["cm4"]
+
+# arch
 cm3 = []
 cm4 = []
-kernel-debug = ["kernel-noinit-canaries"]
-kernel-stats = []
+
+# kernel feature: loadable elf
 kernel-loadable-elf = ["elf"]
 kernel-noinit-canaries = []
-loadable-elf-got = []
 loadable-elf-reg-r9 = ["kernel-loadable-elf"]
 loadable-elf-reg-r10 = ["kernel-loadable-elf"]
+
+# debug features
+kernel-debug = ["kernel-noinit-canaries", "kernel-debug-syscalls"]
+kernel-debug-syscalls = []
+kernel-stats = []
 
 [dependencies]
 num-traits = { version =  "0.2", default-features = false}
 num-derive = { version =  "0.4", default-features = false}
-# elf = { version = "0.7.4", optional = true, default-features = false}
-elf = { path = "/home/lucas/tmp/rust-elf", optional = true, default-features = false}
+elf = { version = "0.7.4", optional = true, default-features = false}
+# elf = { path = "/home/lucas/tmp/rust-elf", optional = true, default-features = false}
 
 
 volatile-register = "0.2.2"

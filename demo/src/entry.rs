@@ -13,8 +13,6 @@ use kernel::{
 };
 use kernel::{print, println};
 
-use crate::{loadable, shell, signal};
-
 pub const FREQ_SYS_TICK: u32 = 100; // Hz
 pub const KOBJS: usize = 32;
 
@@ -26,7 +24,9 @@ pub extern "C" fn _start() {
     let mut uart = UartDevice::<FCPU>::new(UART0);
     let uart_config = SerialConfig::default();
     uart.init(&uart_config);
+    let _ = uart.write_str("===========================\n");
     let _ = uart.write_str("arm rust RTOS demo starting\n");
+    let _ = uart.write_str("===========================\n");
 
     // Set UART0 as main uart
     stdio::set_uart(uart);
@@ -69,20 +69,24 @@ pub extern "C" fn _start() {
     let mut kernel = Kernel::<CortexM, KOBJS, FREQ_SYS_TICK>::init(systick);
 
     #[cfg(feature = "signal")]
-    let signal_threads = signal::init_threads();
+    let signal_threads = crate::signal::init_threads();
     #[cfg(feature = "signal")]
     for thread in signal_threads.iter() {
         kernel.register_thread(&thread);
     }
 
     #[cfg(feature = "shell")]
-    let shell_thread = shell::init_shell_thread();
+    let shell_thread = crate::shell::init_shell_thread();
     #[cfg(feature = "shell")]
     kernel.register_thread(&shell_thread);
 
     #[cfg(feature = "loadable")]
-    let thread = loadable::init(&mut kernel);
+    let thread = crate::loadable::init(&mut kernel);
+    #[cfg(feature = "loadable")]
     kernel.register_thread(&thread);
+
+    println!("Kernel initialized, starting kernel loop and user threads ...");
+    println!("===========================");
 
     loop {
         kernel.kernel_loop();
@@ -92,21 +96,21 @@ pub extern "C" fn _start() {
 fn display_control_register() {
     // Print control (special) register
     let control_register: Control = cortex_m::register::control::read();
-    let _ = print!("control: {} ", Hex::U32(control_register.bits()));
-    let _ = if control_register.npriv().is_privileged() {
+    print!("control: {} ", Hex::U32(control_register.bits()));
+    if control_register.npriv().is_privileged() {
         print!(" priviledged")
     } else {
         print!(" unpriviledged")
     };
-    let _ = if control_register.spsel().is_msp() {
+    if control_register.spsel().is_msp() {
         print!(", MSP")
     } else {
         print!(", PSP")
     };
-    let _ = if control_register.fpca().is_active() {
+    if control_register.fpca().is_active() {
         print!(", FPU")
     } else {
         print!(", no FPU")
     };
-    let _ = println!();
+    println!();
 }

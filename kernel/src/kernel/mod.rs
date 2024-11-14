@@ -1,4 +1,4 @@
-use core::ffi::c_void;
+use core::{ffi::c_void, fmt::Debug};
 
 pub mod elf_loader;
 pub mod errno;
@@ -24,7 +24,7 @@ pub trait InitStackFrameTrait: Sized {
 pub trait CpuVariant {
     const FCPU: u32;
 
-    type CalleeContext: Default;
+    type CalleeContext: Default + Debug + Clone + Copy;
     type InitStackFrame: InitStackFrameTrait;
 
     unsafe fn switch_to_user(

@@ -24,6 +24,21 @@ pub fn write_bytes(bytes: &[u8]) {
     }
 }
 
+// Write 16B per line
+pub fn write_hex(val: &[u8]) {
+    if let Some(uart) = unsafe { STDIO_UART.as_mut() } {
+        for (i, byte) in val.iter().enumerate() {
+            write!(uart, "{:02X} ", byte).unwrap();
+            if i % 16 == 15 {
+                uart.write_byte(b'\n');
+            }
+        }
+        if val.len() % 16 != 0 {
+            uart.write_byte(b'\n');
+        }
+    }
+}
+
 pub fn write_args(args: Arguments<'_>, nl: bool) {
     if let Some(uart) = unsafe { STDIO_UART.as_mut() } {
         let _ = uart.write_fmt(args);
