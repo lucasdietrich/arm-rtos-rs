@@ -1,36 +1,10 @@
 # Rust ARM RTOS playground
 
 This personal *learning* project is an attempt to build a simple/naive RTOS for ARM Cortex-M microcontrollers in Rust.
-Targeted microcontrollers are the `mps2_an385` (arm v6 Cortex M4), `mps2_an386` (arm v7 Cortex M4) platform and the `stm32f429zi` MCU (arm v7 Cortex M4).
+Targeted microcontrollers are the `mps2_an386` (arm v7 Cortex M4) platform and the `stm32f429zi` MCU (arm v7 Cortex M4).
 I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <https://github.com/lucasdietrich/AVRTOS>
 
-## Ressources
-
-- [The embedonomicon](https://docs.rust-embedded.org/embedonomicon/preface.html)
-- [A Practical guide to ARM Cortex-M Exception Handling](https://interrupt.memfault.com/blog/arm-cortex-m-exceptions-and-nvic)
-
-- [QEMU / System Emulation / Generic Loader](https://www.qemu.org/docs/master/system/generic-loader.html)
-- [crate: cortex_m_rt](https://docs.rs/cortex-m-rt/latest/cortex_m_rt/)
-- [Embedded Systems Security and TrustZone](https://embeddedsecurity.io/)
-- Inline assembly:
-  - [**The Rust Reference: Inline assembly**](https://doc.rust-lang.org/reference/inline-assembly.html)
-  - [Nightly: Inline assembly](https://doc.rust-lang.org/nightly/rust-by-example/unsafe/asm.html)
-- [The Embedded Rust Book: Concurrency](https://docs.rust-embedded.org/book/concurrency/)
-- [LLVM-embedded-toolchain-for-Arm/CMakeLists.txt](https://github.com/ARM-software/LLVM-embedded-toolchain-for-Arm/blob/main/CMakeLists.txt)
-- [Position-Independent Code with GCC for ARM Cortex-M](https://mcuoneclipse.com/2021/06/05/position-independent-code-with-gcc-for-arm-cortex-m/)
-- [Support for position independent code](https://developer.arm.com/documentation/100748/0623/Mapping-Code-and-Data-to-the-Target/Support-for-position-independent-code)
-    - [Bare-metal Position Independent Executables](https://developer.arm.com/documentation/100748/0623/Mapping-Code-and-Data-to-the-Target/Bare-metal-Position-Independent-Executables?lang=en)
-    - [Procedure Call Standard for the Arm® Architecture](https://github.com/ARM-software/abi-aa/blob/main/aapcs32/aapcs32.rst)
-- [GCC ARM Options](https://gcc.gnu.org/onlinedocs/gcc-6.1.0/gcc/ARM-Options.html)
-- [OpenBSD Position Independent Executable (PIE)](https://www.openbsd.org/papers/nycbsdcon08-pie/)
-
-### Datasheets:
-
-- [Procedure Call Standard for the ARM® Architecture](https://web.eecs.umich.edu/~prabal/teaching/resources/eecs373/ARM-AAPCS-EABI-v2.08.pdf)
-- [Cortex-M3 Technical Reference Manual](https://documentation-service.arm.com/static/5e8e107f88295d1e18d34714?token=)
-- [Deprecated Features in ARMv7-M](https://documentation-service.arm.com/static/5f8fedcbf86e16515cdbf30f?token=)
-
-## Desired features
+## Features
 
 - [ ] Architecture: (`thumbv7em-none-eabihf`), devices:
     - [ ] mps2_an385 (armv6 Cortex-M3 )
@@ -123,6 +97,34 @@ Test syscall: r0=0, r1=0, r2=0, r3=0
 Loadable ELF returned: 2a
 ......................................................
 ```
+
+## Ressources
+
+- [The embedonomicon](https://docs.rust-embedded.org/embedonomicon/preface.html)
+- [A Practical guide to ARM Cortex-M Exception Handling](https://interrupt.memfault.com/blog/arm-cortex-m-exceptions-and-nvic)
+
+- [QEMU / System Emulation / Generic Loader](https://www.qemu.org/docs/master/system/generic-loader.html)
+- [crate: cortex_m_rt](https://docs.rs/cortex-m-rt/latest/cortex_m_rt/)
+- [Embedded Systems Security and TrustZone](https://embeddedsecurity.io/)
+- Inline assembly:
+  - [**The Rust Reference: Inline assembly**](https://doc.rust-lang.org/reference/inline-assembly.html)
+  - [Nightly: Inline assembly](https://doc.rust-lang.org/nightly/rust-by-example/unsafe/asm.html)
+- [The Embedded Rust Book: Concurrency](https://docs.rust-embedded.org/book/concurrency/)
+- [LLVM-embedded-toolchain-for-Arm/CMakeLists.txt](https://github.com/ARM-software/LLVM-embedded-toolchain-for-Arm/blob/main/CMakeLists.txt)
+- [Position-Independent Code with GCC for ARM Cortex-M](https://mcuoneclipse.com/2021/06/05/position-independent-code-with-gcc-for-arm-cortex-m/)
+- [Support for position independent code](https://developer.arm.com/documentation/100748/0623/Mapping-Code-and-Data-to-the-Target/Support-for-position-independent-code)
+    - [Bare-metal Position Independent Executables](https://developer.arm.com/documentation/100748/0623/Mapping-Code-and-Data-to-the-Target/Bare-metal-Position-Independent-Executables?lang=en)
+    - [Procedure Call Standard for the Arm® Architecture](https://github.com/ARM-software/abi-aa/blob/main/aapcs32/aapcs32.rst)
+- [GCC ARM Options](https://gcc.gnu.org/onlinedocs/gcc-6.1.0/gcc/ARM-Options.html)
+- [OpenBSD Position Independent Executable (PIE)](https://www.openbsd.org/papers/nycbsdcon08-pie/)
+
+### Datasheets:
+
+- [Procedure Call Standard for the ARM® Architecture](https://web.eecs.umich.edu/~prabal/teaching/resources/eecs373/ARM-AAPCS-EABI-v2.08.pdf)
+- [Cortex-M3 Technical Reference Manual](https://documentation-service.arm.com/static/5e8e107f88295d1e18d34714?token=)
+- [Deprecated Features in ARMv7-M](https://documentation-service.arm.com/static/5f8fedcbf86e16515cdbf30f?token=)
+
+---
 
 ## Questions/ideas/problems
 
