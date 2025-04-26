@@ -13,6 +13,7 @@
             // "runToEntryPoint": "demo::entry::_start",
             "svdFile": "res/svd/ARMCM3.svd",
             // "svdFile": "res/svd/CMSDK_CM3.svd",
+            "gdbPath": "/usr/bin/gdb-multiarch",
             "postLaunchCommands": [
                 // "b z_pendsv",
                 // "b z_svc",

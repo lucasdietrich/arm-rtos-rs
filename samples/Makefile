@@ -1,11 +1,12 @@
-TOOLCHAIN_PATH?=/home/lucas/x-tools-arm-rtos-rs/arm-unknown-eabihf/bin
+VENDOR?=customrustos
+TOOLCHAIN_PATH?=/home/lucas/x-tools-arm-rtos-rs/arm-${VENDOR}-eabihf/bin
 
-CC=$(TOOLCHAIN_PATH)/arm-unknown-eabihf-gcc
-LD=$(TOOLCHAIN_PATH)/arm-unknown-eabihf-ld
-OBJCOPY=$(TOOLCHAIN_PATH)/arm-unknown-eabihf-objcopy
-OBJDUMP=$(TOOLCHAIN_PATH)/arm-unknown-eabihf-objdump
-READELF=$(TOOLCHAIN_PATH)/arm-unknown-eabihf-readelf
-NM=$(TOOLCHAIN_PATH)/arm-unknown-eabihf-nm
+CC=$(TOOLCHAIN_PATH)/arm-${VENDOR}-eabihf-gcc
+LD=$(TOOLCHAIN_PATH)/arm-${VENDOR}-eabihf-ld
+OBJCOPY=$(TOOLCHAIN_PATH)/arm-${VENDOR}-eabihf-objcopy
+OBJDUMP=$(TOOLCHAIN_PATH)/arm-${VENDOR}-eabihf-objdump
+READELF=$(TOOLCHAIN_PATH)/arm-${VENDOR}-eabihf-readelf
+NM=$(TOOLCHAIN_PATH)/arm-${VENDOR}-eabihf-nm
 
 LINKER_SCRIPT=linker.ld
 
