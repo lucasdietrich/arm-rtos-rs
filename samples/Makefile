@@ -25,11 +25,15 @@ LDFLAGS=--print-memory-usage
 
 all: clean hello_world.elf disassemble
 
-hello_world.o: hello_world.c
-	$(CC) $(CFLAGS) -c hello_world.c -o hello_world.o
+libc.a:
+	$(CC) $(CFLAGS) -c -o libc.o libc.c -I.
+	$(AR) rcs libc.a libc.o
 
-hello_world.elf: hello_world.o
-	$(LD) $(LDFLAGS) hello_world.o -o hello_world.elf
+hello_world.o: hello_world.c
+	$(CC) $(CFLAGS) -c hello_world.c -o hello_world.o -I.
+
+hello_world.elf: hello_world.o libc.a
+	$(LD) $(LDFLAGS) hello_world.o -o hello_world.elf -L.
 
 disassemble:
 	$(OBJDUMP) -S hello_world.elf > hello_world.elf.src.S
@@ -46,4 +50,4 @@ disassemble:
 	$(NM) -S -s -n hello_world.elf > hello_world.elf.nm
 
 clean:
-	rm -f hello_world.o hello_world.elf *.S *.sections *.readelf
+	rm -f *.o *.elf *.S *.sections *.readelf *.nm *.a

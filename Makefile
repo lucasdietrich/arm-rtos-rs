@@ -30,5 +30,9 @@ debug: qemu
 release:
 	cargo build --release --target $(TARGET)
 
+format:
+	cargo fmt
+	find samples -iname *.h -o -iname *.c | xargs clang-format -i
+
 clean:
 	cargo clean

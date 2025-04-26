@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "Samples",
+            "intelliSenseMode": "gcc-arm",
+            "includePath": [
+                "samples",
+                "/home/lucas/x-tools-arm-rtos-rs/arm-unknown-eabihf/lib/gcc/arm-unknown-eabihf/13.2.0/include"
+            ],
+            "defines": [],
+            "compilerPath": "/home/lucas/x-tools-arm-rtos-rs/arm-unknown-eabihf/bin/arm-unknown-eabihf-gcc",
+            "compilerArgs": [
+            ],
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

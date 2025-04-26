@@ -7,5 +7,15 @@
     },
     "rust-analyzer.check.allTargets": false,
     "cortex-debug.variableUseNaturalFormat": false,
-    "editor.rulers": [80]
+    "editor.rulers": [
+        80
+    ],
+    "files.associations": {
+        "*.jinja": "python",
+        "libc.h": "c",
+        "helpers.h": "c",
+        "stdint-gcc.h": "c",
+        "stdint.h": "c",
+        "arm-rust-rs.h": "c"
+    }
 }

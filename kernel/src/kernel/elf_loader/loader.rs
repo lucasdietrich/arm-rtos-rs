@@ -4,11 +4,7 @@ use elf::{abi, endian::LittleEndian};
 
 use crate::{
     kernel::{
-        elf_loader::entry::{Lex, PICReg},
-        kernel::Kernel,
-        stack::Stack,
-        thread::Thread,
-        userspace, CpuVariant,
+        elf_loader::entry::Lex, kernel::Kernel, stack::Stack, thread::Thread, userspace, CpuVariant,
     },
     println,
 };
@@ -156,7 +152,7 @@ impl<'elf, R: PICRegImpl> Loadable<'elf, R> {
             // 1. Set arg0 into r0
             // 2. Set .git section address into r9
             // 3. Branch and link to entry
-            let r0 = R::call_loadable_entry(lex);
+            let r0 = R::invoke_loadable_entry(lex);
 
             // don't reference to lex after having call ELF entr,
             // lex might have be overwritten by the thread growing stack
@@ -266,7 +262,7 @@ impl<'a, CPU: CpuVariant, const K: usize, const F: u32> Kernel<'a, CPU, K, F> {
         let elf =
             elf::ElfBytes::<LittleEndian>::minimal_parse(bytes).map_err(LoadError::ParseElf)?;
 
-        let loadable = Loadable::<PICReg>::from(elf)?;
+        let loadable = Loadable::<CPU::PICRegImpl>::from(elf)?;
 
         let thread = loadable.create_thread::<CPU>(core::ptr::null_mut(), 0)?;
         let thread = Box::new(thread);

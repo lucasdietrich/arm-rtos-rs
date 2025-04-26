@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["mps2-an386", "kernel-loadable-elf", "kernel-noinit-canaries", "loadable-elf-reg-r9"]
+default = ["mps2-an386", "kernel-loadable-pie", "kernel-noinit-canaries", "loadable-elf-reg-r9"]
 
 # soc
 mps2-an385 = ["cm3"]
@@ -15,10 +15,10 @@ cm3 = []
 cm4 = []
 
 # kernel feature: loadable elf
-kernel-loadable-elf = ["elf"]
+kernel-loadable-pie = ["elf"]
 kernel-noinit-canaries = []
-loadable-elf-reg-r9 = ["kernel-loadable-elf"]
-loadable-elf-reg-r10 = ["kernel-loadable-elf"]
+loadable-elf-reg-r9 = ["kernel-loadable-pie"]
+loadable-elf-reg-r10 = ["kernel-loadable-pie"]
 
 # debug features
 kernel-debug = ["kernel-noinit-canaries", "kernel-debug-syscalls"]

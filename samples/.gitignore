@@ -4,3 +4,4 @@
 *.readelf
 *.sections
 *.nm
+*.a

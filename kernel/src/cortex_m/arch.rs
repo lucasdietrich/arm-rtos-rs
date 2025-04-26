@@ -1,11 +1,14 @@
 use core::arch::{asm, global_asm};
 
-use crate::kernel::{CpuVariant, InitStackFrameTrait, ThreadEntry};
+use crate::kernel::{
+    elf_loader::{Lex, PICRegImpl},
+    CpuVariant, ExceptionStackFrame, ThreadEntry,
+};
 
 // Stack frame produced by an exception
 #[repr(C)]
 #[allow(non_camel_case_types)]
-pub struct __basic_sf {
+pub struct __exception_sf {
     pub r0: u32,
     pub r1: u32,
     pub r2: u32,
@@ -16,7 +19,7 @@ pub struct __basic_sf {
     pub xpsr: u32,
 }
 
-impl InitStackFrameTrait for __basic_sf {
+impl ExceptionStackFrame for __exception_sf {
     fn initialize_at(stack_ptr: *mut u32, entry: ThreadEntry, arg0: *mut core::ffi::c_void) {
         // TODO: Change this value to something not significant (e.g. 0x00000000)
         const UNDEFINED_MARKER: u32 = 0xAAAAAAAA;
@@ -90,7 +93,18 @@ impl CpuVariant for CortexM {
     // Add types for interrupts handlers like sytick, pendsv, svc
 
     type CalleeContext = __callee_context;
-    type InitStackFrame = __basic_sf;
+    type InitStackFrame = __exception_sf;
+
+    #[cfg(any(
+        not(any(feature = "loadable-elf-reg-r9", feature = "loadable-elf-reg-r10")),
+        all(feature = "loadable-elf-reg-r9", feature = "loadable-elf-reg-r10")
+    ))]
+    compile_error!("One and only one PIC register must be selected");
+
+    #[cfg(feature = "loadable-elf-reg-r9")]
+    type PICRegImpl = R9;
+    #[cfg(feature = "loadable-elf-reg-r10")]
+    type PICRegImpl = R10;
 
     #[export_name = "switch_to_user"]
     unsafe fn switch_to_user(
@@ -226,3 +240,41 @@ z_systick:
     bx lr
     "
 );
+
+/// Implementation of `PICRegImpl` using register `r9` for the Global Offset Table.
+#[derive(Debug)]
+pub struct R9;
+
+impl PICRegImpl for R9 {
+    unsafe fn invoke_loadable_entry(lex: &Lex) -> u32 {
+        let r0: u32;
+        asm!(
+            "
+            blx {entry}
+            ",
+            entry = in(reg) lex.entry,
+            inout("r0") lex.arg0 => r0,
+            in("r9") lex.got_addr,
+        );
+        r0
+    }
+}
+
+/// Implementation of `PICRegImpl` using register `r10` for the Global Offset Table.
+#[derive(Debug)]
+pub struct R10;
+
+impl PICRegImpl for R10 {
+    unsafe fn invoke_loadable_entry(lex: &Lex) -> u32 {
+        let r0: u32;
+        asm!(
+            "
+            blx {entry}
+            ",
+            entry = in(reg) lex.entry,
+            inout("r0") lex.arg0 => r0,
+            in("r10") lex.got_addr,
+        );
+        r0
+    }
+}
