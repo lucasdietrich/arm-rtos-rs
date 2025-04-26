@@ -2,6 +2,7 @@
     "recommendations": [
         "trond-snekvik.gnu-mapfiles",
         "zixuanwang.linkerscript",
-        "tamasfe.even-better-toml"
+        "tamasfe.even-better-toml",
+        "marus25.cortex-debug"
     ]
 }
