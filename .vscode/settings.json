@@ -1,11 +1,21 @@
 {
     "files.insertFinalNewline": true,
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
-    "editor.formatOnSave": true,
+    "editor.formatOnSave": false,
     "rust-analyzer.server.extraEnv": {
         "RUSTUP_TOOLCHAIN": "nightly-2024-07-08"
     },
     "rust-analyzer.check.allTargets": false,
     "cortex-debug.variableUseNaturalFormat": false,
-    "editor.rulers": [80]
+    "editor.rulers": [
+        80
+    ],
+    "files.associations": {
+        "*.jinja": "python",
+        "libc.h": "c",
+        "helpers.h": "c",
+        "stdint-gcc.h": "c",
+        "stdint.h": "c",
+        "arm-rust-rs.h": "c"
+    }
 }

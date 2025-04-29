@@ -52,13 +52,28 @@ I've already worked on an RTOS for AVR 8 bits microcontrollers, written in C: <h
         - [x] semaphore 
         - [x] memory allocation
     - [ ] std library (allocator, collections, etc.)
-        - [ ] rust
         - [ ] C
+        - [ ] rust
 - [x] Minimal process: load an application from an elf file and run it
     - [x] parse elf file
+    - [x] implement dynamic linker (.got)
+        - [ ] refactor the dynamic linker, introduce a `DynamicLinker` struct, add logging
     - [x] build toolchain with crosstool-ng for C development
         - [ ] custom linker script ?
     - [ ] write a minimal libc for the os (syscalls)
+- [ ] TCP/IP stack
+    - [ ] Ethernet driver
+        - [ ] qemu
+        - [ ] stm32f4x9zi
+    - [ ] ICMP
+    - [ ] ARP
+    - [ ] DHCP
+    - [ ] DNS
+    - [ ] IPv4
+    - [ ] TCP
+    - [ ] Socket API
+    - [ ] TLS
+- [ ] remove any form of dynamic memory allocation -> `heapless`
 
 ## Expected output (loadable elf)
 

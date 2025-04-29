@@ -6,10 +6,14 @@ NAME?=demo
 TARGET?=thumbv7em-none-eabihf
 ELF=target/$(TARGET)/debug/$(NAME)
 
-build:
+c-samples:
+	@echo "Building C samples"
+	@make -C samples
+
+build: c-samples
 	cargo build --target $(TARGET) --package $(NAME) -vvv
 
-run:
+run: c-samples
 	cargo run --target $(TARGET)
 
 disassemble:
@@ -30,5 +34,10 @@ debug: qemu
 release:
 	cargo build --release --target $(TARGET)
 
+format:
+	cargo fmt
+	find samples -iname *.h -o -iname *.c | xargs clang-format -i
+
 clean:
 	cargo clean
+	make -C samples clean

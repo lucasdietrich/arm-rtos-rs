@@ -28,54 +28,5 @@ pub trait PICRegImpl {
     ///
     /// This is documented in <https://gcc.gnu.org/onlinedocs/gcc-6.1.0/gcc/ARM-Options.html>
     /// under the `-msingle-pic-base` and `-mpic-register` options.
-    unsafe fn call_loadable_entry(lex: &Lex) -> u32;
+    unsafe fn invoke_loadable_entry(lex: &Lex) -> u32;
 }
-
-/// Implementation of `PICRegImpl` using register `r9` for the Global Offset Table.
-#[derive(Debug)]
-pub struct R9;
-impl PICRegImpl for R9 {
-    unsafe fn call_loadable_entry(lex: &Lex) -> u32 {
-        let r0: u32;
-        asm!(
-            "
-            blx {entry}
-            ",
-            entry = in(reg) lex.entry,
-            inout("r0") lex.arg0 => r0,
-            in("r9") lex.got_addr,
-        );
-        r0
-    }
-}
-
-/// Implementation of `PICRegImpl` using register `r10` for the Global Offset Table.
-#[derive(Debug)]
-pub struct R10;
-impl PICRegImpl for R10 {
-    unsafe fn call_loadable_entry(lex: &Lex) -> u32 {
-        let r0: u32;
-        asm!(
-            "
-            blx {entry}
-            ",
-            entry = in(reg) lex.entry,
-            inout("r0") lex.arg0 => r0,
-            in("r9") lex.got_addr,
-        );
-        r0
-    }
-}
-
-#[cfg(any(
-    not(any(feature = "loadable-elf-reg-r9", feature = "loadable-elf-reg-r10")),
-    all(feature = "loadable-elf-reg-r9", feature = "loadable-elf-reg-r10")
-))]
-compile_error!("One and only one PIC register must be selected");
-
-/// Type alias that selects the appropriate `PICRegImpl` based on the
-/// active feature flag, using either `R9` or `R10`.
-#[cfg(feature = "loadable-elf-reg-r9")]
-pub type PICReg = R9;
-#[cfg(feature = "loadable-elf-reg-r10")]
-pub type PICReg = R10;

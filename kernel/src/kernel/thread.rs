@@ -3,7 +3,7 @@ use super::{
     stack::StackInfo,
     sync::{SwapData, Swappable},
     timeout::TimeoutInstant,
-    CpuVariant, InitStackFrameTrait, ThreadEntry,
+    CpuVariant, ExceptionStackFrame, ThreadEntry,
 };
 use crate::list::{self, singly_linked as sl};
 use core::{cell::Cell, cmp::Ordering, ffi::c_void, fmt::Display, ptr};

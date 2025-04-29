@@ -60,12 +60,13 @@ pub enum SchedulerVerdict<'a, CPU: CpuVariant> {
 
 /// Represents the outcome of a syscall execution.
 pub enum SyscallOutcome {
+    // TODO allow to return a pointer ??
     /// Syscall completed immediately with the given return value.
     Completed(i32),
     /// Syscall made the thread pending and is waiting for a signal to complete.
     Pending,
-    /// 2 bytes align raw pointer
-    RawPtr(*const u8),
+    // /// 2 bytes align raw pointer
+    // RawPtr(*const u8),
 }
 
 impl From<Option<i32>> for SyscallOutcome {
@@ -110,6 +111,7 @@ pub struct Kernel<'a, CPU: CpuVariant, const K: usize, const F: u32> {
     idle: Thread<'a, CPU>,
 
     /// The array of kernel objects (synchronization primitives).
+    /// use heapless primitives to avoid heap allocation
     kobj: [Option<Box<dyn KernelObjectTrait<'a, CPU> + 'a>>; K],
 }
 

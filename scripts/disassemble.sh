@@ -20,16 +20,18 @@ mv $ELF.bss.txt ${OLD}
 mv $ELF.data.txt ${OLD}
 mv $ELF.noinit.txt ${OLD}
 
-arm-none-eabi-objdump -S $ELF | rustfilt > ${ELF}_src.s
-arm-none-eabi-objdump -d $ELF | rustfilt > $ELF.s
-arm-none-eabi-objdump -h $ELF | rustfilt > ${ELF}_sections.s
-arm-none-eabi-readelf -a $ELF | rustfilt > ${ELF}_readelf.txt
-arm-none-eabi-readelf -x .isr_vector $ELF > $ELF.isr_vector.txt
-arm-none-eabi-readelf -x .text $ELF > $ELF.text.txt
-arm-none-eabi-nm --print-size --size-sort --radix=x $ELF | rustfilt > ${ELF}_size.txt
-arm-none-eabi-readelf -x .bss $ELF > $ELF.bss.txt
-arm-none-eabi-readelf -x .data $ELF > $ELF.data.txt
-arm-none-eabi-readelf -x .noinit $ELF > $ELF.noinit.txt
+TOOLCHAIN=arm-none-linux-gnueabihf
+
+${TOOLCHAIN}-objdump -S $ELF | rustfilt > ${ELF}_src.s
+${TOOLCHAIN}-objdump -d $ELF | rustfilt > $ELF.s
+${TOOLCHAIN}-objdump -h $ELF | rustfilt > ${ELF}_sections.s
+${TOOLCHAIN}-readelf -a $ELF | rustfilt > ${ELF}_readelf.txt
+${TOOLCHAIN}-readelf -x .isr_vector $ELF > $ELF.isr_vector.txt
+${TOOLCHAIN}-readelf -x .text $ELF > $ELF.text.txt
+${TOOLCHAIN}-nm --print-size --size-sort --radix=x $ELF | rustfilt > ${ELF}_size.txt
+${TOOLCHAIN}-readelf -x .bss $ELF > $ELF.bss.txt
+${TOOLCHAIN}-readelf -x .data $ELF > $ELF.data.txt
+${TOOLCHAIN}-readelf -x .noinit $ELF > $ELF.noinit.txt
 
 echo "disassemble files:"
 echo "  ${ELF}_src.s"

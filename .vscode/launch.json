@@ -15,7 +15,7 @@
             // "svdFile": "res/svd/CMSDK_CM3.svd",
             "gdbPath": "/usr/bin/gdb-multiarch",
             "postLaunchCommands": [
-                // "b z_pendsv",
+                "b z_pendsv",
                 // "b z_svc",
                 // "b mytask_entry",
                 // "b switch_to_user",

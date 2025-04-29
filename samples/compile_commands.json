@@ -1,0 +1,68 @@
+[
+  {
+    "arguments": [
+      "/home/lucas/x-tools-arm-rtos-rs/arm-customrustos-eabihf/bin/arm-customrustos-eabihf-gcc",
+      "-O2",
+      "-g",
+      "-fPIC",
+      "-msingle-pic-base",
+      "-mpic-register=r9",
+      "-mno-pic-data-is-text-relative",
+      "-fpie",
+      "--sysroot=/home/lucas/x-tools-arm-rtos-rs/arm-customrustos-eabihf/lib/gcc/arm-customrustos-eabihf/14.2.0/",
+      "-fno-builtin",
+      "-c",
+      "-I.",
+      "-o",
+      "hello_world.o",
+      "hello_world.c"
+    ],
+    "directory": "/home/lucas/arm-rtos-rs/samples",
+    "file": "/home/lucas/arm-rtos-rs/samples/hello_world.c",
+    "output": "/home/lucas/arm-rtos-rs/samples/hello_world.o"
+  },
+  {
+    "arguments": [
+      "/home/lucas/x-tools-arm-rtos-rs/arm-customrustos-eabihf/bin/arm-customrustos-eabihf-gcc",
+      "-O2",
+      "-g",
+      "-fPIC",
+      "-msingle-pic-base",
+      "-mpic-register=r9",
+      "-mno-pic-data-is-text-relative",
+      "-fpie",
+      "--sysroot=/home/lucas/x-tools-arm-rtos-rs/arm-customrustos-eabihf/lib/gcc/arm-customrustos-eabihf/14.2.0/",
+      "-fno-builtin",
+      "-c",
+      "-I.",
+      "-o",
+      "libc.o",
+      "libc.c"
+    ],
+    "directory": "/home/lucas/arm-rtos-rs/samples",
+    "file": "/home/lucas/arm-rtos-rs/samples/libc.c",
+    "output": "/home/lucas/arm-rtos-rs/samples/libc.o"
+  },
+  {
+    "arguments": [
+      "/home/lucas/x-tools-arm-rtos-rs/arm-customrustos-eabihf/bin/arm-customrustos-eabihf-gcc",
+      "-O2",
+      "-g",
+      "-fPIC",
+      "-msingle-pic-base",
+      "-mpic-register=r9",
+      "-mno-pic-data-is-text-relative",
+      "-fpie",
+      "--sysroot=/home/lucas/x-tools-arm-rtos-rs/arm-customrustos-eabihf/lib/gcc/arm-customrustos-eabihf/14.2.0/",
+      "-fno-builtin",
+      "-c",
+      "-I.",
+      "-o",
+      "libuser.o",
+      "libuser.c"
+    ],
+    "directory": "/home/lucas/arm-rtos-rs/samples",
+    "file": "/home/lucas/arm-rtos-rs/samples/libuser.c",
+    "output": "/home/lucas/arm-rtos-rs/samples/libuser.o"
+  }
+]

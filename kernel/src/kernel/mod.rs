@@ -1,5 +1,7 @@
 use core::{ffi::c_void, fmt::Debug};
 
+use elf_loader::PICRegImpl;
+
 pub mod elf_loader;
 pub mod errno;
 pub mod idle;
@@ -14,7 +16,7 @@ pub mod userspace;
 // This function can be naked as it will never return !
 pub type ThreadEntry = extern "C" fn(*mut c_void) -> !;
 
-pub trait InitStackFrameTrait: Sized {
+pub trait ExceptionStackFrame: Sized {
     const SIZE_BYTES: usize = size_of::<Self>();
     const SIZE_WORDS: usize = size_of::<Self>() / 4;
 
@@ -25,7 +27,10 @@ pub trait CpuVariant {
     const FCPU: u32;
 
     type CalleeContext: Default + Debug + Clone + Copy;
-    type InitStackFrame: InitStackFrameTrait;
+    type InitStackFrame: ExceptionStackFrame;
+
+    #[cfg(feature = "kernel-loadable-pie")]
+    type PICRegImpl: PICRegImpl;
 
     unsafe fn switch_to_user(
         stack_ptr: *mut u32,
